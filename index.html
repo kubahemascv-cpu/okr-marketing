@@ -93,6 +93,37 @@ tr.cur td{background:var(--y-l);font-weight:700}
 input[type=range]{width:100%;accent-color:#1F2128;height:34px}
 .conf{font-size:28px;font-weight:800;text-align:center}
 @media(max-width:380px){.big{font-size:32px}.grid2{grid-template-columns:1fr}}
+.vhead .mid{margin-bottom:4px}.vhead .sm{margin-bottom:14px}
+.cfg-grid{display:grid;grid-template-columns:1fr;gap:12px}
+.nav button .nl{display:block}
+
+/* ═════════ DESKTOP (≥1000px): navigasi di samping, area utama melebar mengikuti layar ═════════ */
+@media(min-width:1000px){
+  :root{--topH:61px;--sideW:224px}
+  body.shell{padding-left:var(--sideW);padding-bottom:0}
+  body.shell .top{margin-left:calc(-1*var(--sideW))}
+  .top-in{max-width:none;padding:0 20px}
+  .nav{top:var(--topH);bottom:0;left:0;right:auto;width:var(--sideW);border-top:none;border-right:1px solid var(--bdr);padding:18px 12px;overflow-y:auto;background:#fff}
+  .nav-in{max-width:none;flex-direction:column;gap:6px}
+  .nav button{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;padding:12px 14px;border-radius:13px;font-size:13.5px;text-align:left}
+  .nav button .ic{font-size:18px;width:24px;text-align:center}
+  .nav button:hover:not(.on){background:var(--bg2)}
+  .wrap{max-width:none;margin:0;padding:26px 32px 40px}
+  body.shell #view{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:16px;align-items:start}
+  body.shell #view>*{grid-column:1/-1;margin-bottom:0}
+  body.shell #view>.g{grid-column:auto}
+  body.shell #view>.narrow{max-width:760px}
+  body.shell #view>.btn{width:auto;justify-self:start;padding:0 22px;margin:0}
+  body.shell #view>.note{max-width:980px}
+  .vhead .sm{margin-bottom:0}
+  .vhead .mid{font-size:28px;margin-bottom:6px}
+  .card{margin-bottom:0}
+  .gridA{grid-template-columns:repeat(4,1fr)}
+  .grid2{margin-top:14px}
+  .hb .sel{max-width:260px}
+  .cfg-grid{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+  .toast{bottom:28px;left:calc(50% + var(--sideW)/2)}
+}
 </style>
 </head>
 <body>
@@ -251,6 +282,7 @@ function krScore(id,m,K){ // skor 0.0-1.0 per bulan
 
 // ═════════════ SHELL ═════════════
 function gate(){
+  document.body.classList.remove('shell');
   $('top').style.display='none';$('nav').style.display='none';
   $('view').innerHTML='<div class="gate"><div class="logo">OKR</div><div class="mid" style="margin-bottom:6px">OKR Kubah Emas</div>'+
     '<div class="sm mut" style="margin-bottom:22px">Masukkan PIN tim untuk membuka.</div>'+
@@ -265,6 +297,7 @@ function tryPin(){
   else{$('pinerr').textContent='PIN salah.';$('pin').value='';}
 }
 function pickWho(){
+  document.body.classList.remove('shell');
   $('top').style.display='none';$('nav').style.display='none';
   $('view').innerHTML='<div class="gate" style="margin-top:8vh"><div class="logo">OKR</div><div class="mid" style="margin-bottom:6px">Siapa Anda?</div>'+
     '<div class="sm mut" style="margin-bottom:20px">Pilihan diingat di HP ini. Ini penanda, bukan verifikasi identitas.</div><div class="pick">'+
@@ -275,6 +308,7 @@ function switchWho(){ls('okr_who',null);S.who='';pickWho();}
 function start(){
   if(!S.ok){gate();return;}
   if(!S.who||!PEOPLE[S.who]){pickWho();return;}
+  document.body.classList.add('shell');
   $('top').style.display='block';$('nav').style.display='block';$('whobtn').textContent=S.who+' ⇄';
   if(!apiReady()){$('view').innerHTML='<div class="card"><div class="mid" style="margin-bottom:8px">Apps Script belum dipasang</div><div class="sm mut">Isi <b>APPS_SCRIPT_URL</b> di index.html dengan URL deploy (/exec), lalu upload ulang.</div></div>';return;}
   $('view').innerHTML='<div class="spin">Memuat data…</div>';
@@ -310,7 +344,7 @@ function weekDone(person,kr){var w=weekStart();return (D.checkins||[]).some(func
 function lastConf(kr){var l=null;(D.checkins||[]).forEach(function(c){if(c.kr===kr&&(!l||c.week>l.week||(c.week===l.week&&c.ts>l.ts)))l=c;});return l;}
 function krCard(id,K){
   var o=krInfo(id,K),def=KRS[id],st=statusOf(o.st);
-  return '<div class="card"><div class="kr-r">'+esc(def.role)+' · '+esc(def.person)+'</div><div class="kr-t">'+esc(def.title)+'</div>'+
+  return '<div class="card g"><div class="kr-r">'+esc(def.role)+' · '+esc(def.person)+'</div><div class="kr-t">'+esc(def.title)+'</div>'+
     '<div class="row" style="margin-top:12px"><div class="mid">'+esc(o.big)+'</div><span class="tag '+st+' sp">'+(o.pct==null?'—':pc(o.pct,0))+'</span></div>'+
     bar(o.pct,statusOf(o.st))+(o.extra?'<div class="sm" style="margin-top:10px;font-weight:700">'+esc(o.extra)+'</div>':'')+
     '<div class="sm mut" style="margin-top:6px">'+esc(o.sub)+'</div>'+(o.pct!=null&&id!=='mgr'?'<div class="sm mut" style="margin-top:4px">Persen = jarak ke target Januari. Warna = dibanding target bulan ini.</div>':'')+'</div>';
@@ -321,7 +355,7 @@ function vHome(K){
   var c=K.c,a=K.act,P=PEOPLE[S.who],h='';
   var t=today(),before=t<PERIOD.start;
   var sub=before?'Periode mulai '+dLabel(PERIOD.start)+'.':'Minggu ke-'+clamp(Math.floor((pd(t)-pd(PERIOD.start))/604800000)+1,1,13)+' dari 13 · berakhir '+dLabel(PERIOD.end);
-  h+='<div class="mid" style="margin-bottom:2px">Halo, '+esc(S.who)+'</div><div class="sm mut" style="margin-bottom:16px">'+esc(sub)+'</div>';
+  h+='<div class="vhead"><div class="mid">Halo, '+esc(S.who)+'</div><div class="sm mut">'+esc(sub)+'</div></div>';
   // hero: kemajuan problem
   h+='<div class="card hero"><div class="h">Kemajuan problem · "Banyak tanya, sedikit yang membeli"</div>';
   if(a){
@@ -345,7 +379,7 @@ function vHome(K){
   P.krs.forEach(function(k){h+=krCard(k,K);});
   // hambatan milikku
   var mine=(D.hambatan||[]).filter(function(x){return x.owner===S.who&&x.status!=='Selesai';});
-  h+='<div class="card"><div class="h">Hambatan di tangan Anda</div>';
+  h+='<div class="card g"><div class="h">Hambatan di tangan Anda</div>';
   if(!mine.length)h+='<div class="sm mut">Tidak ada hambatan terbuka.</div>';
   else h+=mine.map(function(x){return '<div class="hb"><div class="kr-t">'+esc(x.title)+'</div><div class="sm mut">'+esc(x.status)+' · tenggat '+dLabel(x.due)+(x.due&&x.due<t?' <b style="color:var(--bad)">terlambat</b>':'')+'</div></div>';}).join('');
   h+='</div>';
@@ -357,24 +391,24 @@ function vPapan(K){
   var c=K.c,h='';
   h+='<div class="card hero"><div class="h">Objective · '+esc(dLabel(PERIOD.start))+' – '+esc(dLabel(PERIOD.end))+'</div><div class="mid" style="color:#fff">Lebih banyak orang yang bertanya di Kubah Emas akhirnya membeli.</div></div>';
   // KR1
-  h+='<div class="card"><div class="kr-r">KR1 · bersama</div><div class="kr-t">Deal Online per bulan: '+n0(c.online_base)+' → '+n0(c.online_target)+' <span class="mut" style="font-weight:600">(stretch '+n0(c.online_stretch)+')</span></div>'+
+  h+='<div class="card g"><div class="kr-r">KR1 · bersama</div><div class="kr-t">Deal Online per bulan: '+n0(c.online_base)+' → '+n0(c.online_target)+' <span class="mut" style="font-weight:600">(stretch '+n0(c.online_stretch)+')</span></div>'+
     '<table style="margin-top:10px"><tr><th>Bulan</th><th class="r">Target</th><th class="r">Aktual</th><th class="r">Status</th></tr>'+
     K.months.map(function(m){var p=m.has?(m.projOnline-c.online_base)/((m.msOnline-c.online_base)||1):null;
       return '<tr><td>'+esc(ymShort(m.ym))+'</td><td class="r">'+n0(m.msOnline)+'</td><td class="r">'+(m.has?n0(m.projOnline)+(m.running?'*':''):'—')+'</td><td class="r"><span class="tag '+statusOf(p)+'">'+statusTxt(p)+'</span></td></tr>';}).join('')+
     '</table><div class="sm mut" style="margin-top:8px">* proyeksi dari angka berjalan. Target bulanan linear dari baseline ke target Januari.</div></div>';
   // KR2
-  h+='<div class="card"><div class="kr-r">KR2 · bersama</div><div class="kr-t">Konversi chat → pembelian online: '+pc(K.convBase)+' → '+pc(K.convTarget)+'</div>'+
+  h+='<div class="card g"><div class="kr-r">KR2 · bersama</div><div class="kr-t">Konversi chat → pembelian online: '+pc(K.convBase)+' → '+pc(K.convTarget)+'</div>'+
     '<table style="margin-top:10px"><tr><th>Bulan</th><th class="r">Target</th><th class="r">Aktual</th><th class="r">Status</th></tr>'+
     K.months.map(function(m){var p=m.has&&m.conv!=null?(m.conv-K.convBase)/((m.msConv-K.convBase)||1):null;
       return '<tr><td>'+esc(ymShort(m.ym))+'</td><td class="r">'+pc(m.msConv)+'</td><td class="r">'+(m.has&&m.conv!=null?pc(m.conv):'—')+'</td><td class="r"><span class="tag '+statusOf(p)+'">'+statusTxt(p)+'</span></td></tr>';}).join('')+
     '</table><div class="sm mut" style="margin-top:8px">Chat masuk tidak dikunci ('+n0(c.chat_base)+'/bulan baseline). Kalau chat naik, konversi bisa meleset walau Deal Online tercapai — itu wajar.</div></div>';
   // konteks total
   var a=K.act,fin=c.total_target_final===1;
-  h+='<div class="card"><div class="row"><div class="kr-t">Konteks: total pembelian toko</div><span class="tag '+(fin?'ok':'warn')+' sp">'+(fin?'Target final':'Target belum final')+'</span></div>'+
+  h+='<div class="card g"><div class="row"><div class="kr-t">Konteks: total pembelian toko</div><span class="tag '+(fin?'ok':'warn')+' sp">'+(fin?'Target final':'Target belum final')+'</span></div>'+
     '<div class="mid" style="margin-top:10px">'+(a?n0(a.projTotal)+(a.running?' <span class="sm mut">(proyeksi)</span>':''):'—')+' <span class="sm mut">dari target '+n0(c.total_target)+' (baseline '+n0(c.total_base)+')</span></div>'+
     '<div class="sm mut" style="margin-top:8px">Bukan beban OKR ini sepenuhnya: kenaikan dari pembeli offline dan pelanggan lama termasuk problem lain (2, 4, 5). OKR ini hanya memegang bagian Deal Online.</div></div>';
   // tim
-  h+='<div class="card"><div class="h">Tim · minggu ini</div><table><tr><th>Peran</th><th class="r">KR</th><th class="r">Yakin</th><th class="r">Check-in</th></tr>'+
+  h+='<div class="card g"><div class="h">Tim · minggu ini</div><table><tr><th>Peran</th><th class="r">KR</th><th class="r">Yakin</th><th class="r">Check-in</th></tr>'+
     Object.keys(KRS).map(function(k){var o=krInfo(k,K),lc=lastConf(k),done=weekDone(KRS[k].person,k);
       return '<tr><td><b>'+esc(KRS[k].person)+'</b><div class="sm mut">'+esc(KRS[k].role)+'</div></td><td class="r"><span class="tag '+statusOf(o.st)+'">'+(o.pct==null?'—':pc(o.pct,0))+'</span></td><td class="r">'+(lc?lc.conf+'/10':'—')+'</td><td class="r">'+(done?'✅':'<span class="mut">belum</span>')+'</td></tr>';}).join('')+'</table></div>';
   return h;
@@ -384,19 +418,19 @@ function vPapan(K){
 function vCheckin(K){
   var P=PEOPLE[S.who],ks=P.krs;if(!S.krSel||ks.indexOf(S.krSel)<0)S.krSel=ks[0];
   var k=S.krSel,w=weekStart(),ex=(D.checkins||[]).filter(function(c){return c.person===S.who&&c.kr===k&&c.week===w;})[0];
-  var h='<div class="mid" style="margin-bottom:4px">Check-in minggu ini</div><div class="sm mut" style="margin-bottom:14px">Minggu mulai '+dLabel(w)+'. Cukup 1 menit.</div>';
+  var h='<div class="vhead"><div class="mid">Check-in minggu ini</div><div class="sm mut">Minggu mulai '+dLabel(w)+'. Cukup 1 menit.</div></div>';
   if(ks.length>1)h+='<div class="chips">'+ks.map(function(x){return '<button class="chip '+(x===k?'on':'')+'" onclick="S.krSel=\''+x+'\';render()">'+esc(KRS[x].role)+'</button>';}).join('')+'</div>';
   var o=krInfo(k,K);
   h+='<div class="card"><div class="kr-r">'+esc(KRS[k].role)+'</div><div class="kr-t">'+esc(KRS[k].title)+'</div><div class="sm mut" style="margin-top:6px">Sekarang: <b>'+esc(o.big)+'</b></div></div>';
   if(ex)h+=note('Sudah diisi minggu ini. Menyimpan lagi akan <b>menimpa</b> isian sebelumnya.','ok');
   var cv=ex?ex.conf:7;
-  h+='<div class="card"><label class="lbl">Seberapa yakin KR ini tercapai? (1 = hampir pasti gagal, 10 = pasti tercapai)</label>'+
+  h+='<div class="card g"><label class="lbl">Seberapa yakin KR ini tercapai? (1 = hampir pasti gagal, 10 = pasti tercapai)</label>'+
     '<div class="conf" id="confv">'+cv+'</div><input type="range" id="conf" min="1" max="10" step="1" value="'+cv+'" oninput="$(\'confv\').textContent=this.value">'+
     '<label class="lbl">Hambatan terbesar minggu ini (kosongkan kalau tidak ada)</label><textarea class="ta" id="blocker" maxlength="500">'+esc(ex?ex.blocker:'')+'</textarea>'+
     '<label class="lbl">Yang akan dikerjakan minggu depan</label><textarea class="ta" id="plan" maxlength="500">'+esc(ex?ex.plan:'')+'</textarea>'+
     '<button class="btn" id="cksave" onclick="saveCheckin()">Simpan check-in</button></div>';
   var hist=(D.checkins||[]).filter(function(c){return c.person===S.who&&c.kr===k;}).sort(function(a,b){return a.week<b.week?1:-1;}).slice(0,4);
-  if(hist.length)h+='<div class="card"><div class="h">Check-in sebelumnya</div>'+hist.map(function(c){return '<div class="hb"><div class="row"><b class="sm">'+dLabel(c.week)+'</b><span class="sp tag na">Yakin '+c.conf+'/10</span></div>'+(c.blocker?'<div class="sm" style="margin-top:6px"><b>Hambatan:</b> '+esc(c.blocker)+'</div>':'')+(c.plan?'<div class="sm"><b>Rencana:</b> '+esc(c.plan)+'</div>':'')+'</div>';}).join('')+'</div>';
+  if(hist.length)h+='<div class="card g"><div class="h">Check-in sebelumnya</div>'+hist.map(function(c){return '<div class="hb"><div class="row"><b class="sm">'+dLabel(c.week)+'</b><span class="sp tag na">Yakin '+c.conf+'/10</span></div>'+(c.blocker?'<div class="sm" style="margin-top:6px"><b>Hambatan:</b> '+esc(c.blocker)+'</div>':'')+(c.plan?'<div class="sm"><b>Rencana:</b> '+esc(c.plan)+'</div>':'')+'</div>';}).join('')+'</div>';
   return h;
 }
 function saveCheckin(){
@@ -408,12 +442,12 @@ function saveCheckin(){
 var AF=[['chat','Chat masuk (kumulatif bulan ini)'],['online','Deal Online (kumulatif)'],['total','Total pembelian toko (kumulatif)'],['iklan','…dari Iklan'],['konten','…dari Konten'],['rujukan','…dari Rujukan Kumasindo'],['lainnya','…dari Lainnya / pelanggan lama / offline']];
 function vAngka(K){
   var rows=(D.angka||[]).slice().sort(function(a,b){return a.asOf<b.asOf?1:-1;}),last=rows[0]||{};
-  var h='<div class="mid" style="margin-bottom:4px">Angka bulanan</div><div class="sm mut" style="margin-bottom:14px">Isi <b>kumulatif sejak tanggal 1</b> bulan itu, bukan angka per minggu. Satu tanggal = satu baris; mengisi tanggal yang sama akan menimpa.</div>';
+  var h='<div class="vhead"><div class="mid">Angka bulanan</div><div class="sm mut">Isi <b>kumulatif sejak tanggal 1</b> bulan itu, bukan angka per minggu. Satu tanggal = satu baris; mengisi tanggal yang sama akan menimpa.</div></div>';
   h+='<div class="card"><label class="lbl">Angka per tanggal</label><input class="inp" type="date" id="a_asOf" value="'+today()+'" oninput="angkaLive()">';
-  h+='<div class="grid2">'+AF.map(function(f){return '<div><label class="lbl">'+f[1]+'</label><input class="inp" type="number" inputmode="numeric" min="0" step="1" id="a_'+f[0]+'" value="'+(last[f[0]]!=null?last[f[0]]:'')+'" oninput="angkaLive()"></div>';}).join('')+'</div>'+
+  h+='<div class="grid2 gridA">'+AF.map(function(f){return '<div><label class="lbl">'+f[1]+'</label><input class="inp" type="number" inputmode="numeric" min="0" step="1" id="a_'+f[0]+'" value="'+(last[f[0]]!=null?last[f[0]]:'')+'" oninput="angkaLive()"></div>';}).join('')+'</div>'+
     '<div id="a_live" style="margin-top:14px"></div><button class="btn" id="a_save" onclick="saveAngka()">Simpan angka</button></div>';
   h+=note('Kolom asal pelanggan (iklan, konten, rujukan, lainnya) wajib diisi dari catatan CS. Kalau jumlahnya kurang dari total pembelian, selisihnya tampil sebagai <b>belum teratribusi</b> dan porsi jalur tiap orang jadi terlalu kecil.','');
-  if(rows.length)h+='<div class="card"><div class="h">Riwayat</div><table><tr><th>Tanggal</th><th class="r">Chat</th><th class="r">Online</th><th class="r">Total</th><th class="r">Oleh</th></tr>'+rows.slice(0,8).map(function(r){return '<tr><td>'+dLabel(r.asOf)+'</td><td class="r">'+n0(r.chat)+'</td><td class="r">'+n0(r.online)+'</td><td class="r">'+n0(r.total)+'</td><td class="r">'+esc(r.by)+'</td></tr>';}).join('')+'</table></div>';
+  if(rows.length)h+='<div class="card g"><div class="h">Riwayat</div><table><tr><th>Tanggal</th><th class="r">Chat</th><th class="r">Online</th><th class="r">Total</th><th class="r">Oleh</th></tr>'+rows.slice(0,8).map(function(r){return '<tr><td>'+dLabel(r.asOf)+'</td><td class="r">'+n0(r.chat)+'</td><td class="r">'+n0(r.online)+'</td><td class="r">'+n0(r.total)+'</td><td class="r">'+esc(r.by)+'</td></tr>';}).join('')+'</table></div>';
   return h;
 }
 function angkaVals(){var v={asOf:$('a_asOf').value},bad=[];AF.forEach(function(f){var s=$('a_'+f[0]).value;v[f[0]]=s===''?null:Number(s);if(s===''||isNaN(v[f[0]])||v[f[0]]<0||v[f[0]]!==Math.floor(v[f[0]]))bad.push(f[0]);});return {v:v,bad:bad};}
@@ -442,9 +476,9 @@ var HB_OPEN=false;
 function vHambatan(K){
   var hb=(D.hambatan||[]).slice(),t=today(),ord={Terbuka:0,Dikerjakan:1,Selesai:2};
   hb.sort(function(a,b){var d=ord[a.status]-ord[b.status];if(d)return d;var x=a.due||'9999',y=b.due||'9999';return x<y?-1:x>y?1:0;});
-  var h='<div class="mid" style="margin-bottom:4px">Hambatan</div><div class="sm mut" style="margin-bottom:14px">'+K.hbClosed+' dari '+K.hbTotal+' tertutup. Target akhir: ≥80%.</div>';
+  var h='<div class="vhead"><div class="mid">Hambatan</div><div class="sm mut">'+K.hbClosed+' dari '+K.hbTotal+' tertutup. Target akhir: ≥80%.</div></div>';
   h+='<button class="btn ghost" style="margin:0 0 14px" onclick="HB_OPEN=!HB_OPEN;render()">'+(HB_OPEN?'Tutup form':'+ Tambah hambatan')+'</button>';
-  if(HB_OPEN)h+='<div class="card"><label class="lbl">Apa hambatannya?</label><input class="inp" id="hb_title" maxlength="120" placeholder="mis. Chat malam telat dibalas">'+
+  if(HB_OPEN)h+='<div class="card narrow"><label class="lbl">Apa hambatannya?</label><input class="inp" id="hb_title" maxlength="120" placeholder="mis. Chat malam telat dibalas">'+
     '<div class="grid2"><div><label class="lbl">Yang memperbaiki</label><select class="sel" id="hb_owner">'+Object.keys(PEOPLE).map(function(n){return '<option'+(n===S.who?' selected':'')+'>'+n+'</option>';}).join('')+'</select></div>'+
     '<div><label class="lbl">Tenggat</label><input class="inp" type="date" id="hb_due"></div></div><label class="lbl">Catatan (opsional)</label><textarea class="ta" id="hb_note" maxlength="500"></textarea>'+
     '<button class="btn" id="hb_save" onclick="addHambatan()">Simpan hambatan</button></div>';
@@ -467,22 +501,22 @@ function setHb(id,status){
 // ═════════════ REVIEW + PENGATURAN ═════════════
 function sc(x){return x==null?'—':x.toFixed(1).replace('.',',');}
 function vReview(K){
-  var P=PEOPLE[S.who],h='<div class="mid" style="margin-bottom:4px">Review</div><div class="sm mut" style="margin-bottom:14px">Skor 0,0–1,0 per bulan: 1,0 = target bulan itu tercapai. Skor stretch yang sehat sekitar 0,7.</div>';
+  var P=PEOPLE[S.who],h='<div class="vhead"><div class="mid">Review</div><div class="sm mut">Skor 0,0–1,0 per bulan: 1,0 = target bulan itu tercapai. Skor stretch yang sehat sekitar 0,7.</div></div>';
   var rows=[['online','KR1 · Deal Online'],['conv','KR2 · Konversi chat'],['mgr','Lukman · Hambatan'],['ads','Lukman · Iklan'],['brand','Dicky · Konten'],['cs','Tri · Konversi CS'],['kum','Faizal · Rujukan']];
-  h+='<div class="card"><table><tr><th>KR</th>'+K.months.map(function(m){return '<th class="r">'+esc(ymShort(m.ym))+'</th>';}).join('')+'</tr>'+
+  h+='<div class="card g"><table><tr><th>KR</th>'+K.months.map(function(m){return '<th class="r">'+esc(ymShort(m.ym))+'</th>';}).join('')+'</tr>'+
     rows.map(function(r){return '<tr><td>'+r[1]+'</td>'+K.months.map(function(m){return '<td class="r"><b>'+sc(krScore(r[0],m,K))+'</b></td>';}).join('')+'</tr>';}).join('')+'</table>'+
     '<div class="sm mut" style="margin-top:8px">"—" = belum ada angka atau target belum dikunci. Skor bulan berjalan memakai proyeksi.</div></div>';
   var ms=K.months.filter(function(m){return m.has;}).map(function(m){return m.ym;});
   if(!S.reviewMonth||ms.indexOf(S.reviewMonth)<0)S.reviewMonth=ms[ms.length-1]||PERIOD.months[0];
   var cur=(D.review||[]).filter(function(r){return r.month===S.reviewMonth;})[0];
-  h+='<div class="card"><div class="h">Catatan evaluasi</div><div class="chips">'+PERIOD.months.map(function(m){return '<button class="chip '+(m===S.reviewMonth?'on':'')+'" onclick="S.reviewMonth=\''+m+'\';render()">'+esc(ymShort(m))+'</button>';}).join('')+'</div>';
+  h+='<div class="card g"><div class="h">Catatan evaluasi</div><div class="chips">'+PERIOD.months.map(function(m){return '<button class="chip '+(m===S.reviewMonth?'on':'')+'" onclick="S.reviewMonth=\''+m+'\';render()">'+esc(ymShort(m))+'</button>';}).join('')+'</div>';
   if(P.admin)h+='<textarea class="ta" id="rv_text" maxlength="1000" placeholder="Apa yang berhasil, apa yang gagal, apa yang diubah bulan depan?">'+esc(cur?cur.text:'')+'</textarea><button class="btn" id="rv_save" onclick="saveReview()">Simpan catatan</button>';
   else h+='<div class="sm" style="white-space:pre-wrap">'+(cur&&cur.text?esc(cur.text):'<span class="mut">Belum ada catatan. Hanya Lukman yang menulis catatan evaluasi.</span>')+'</div>';
   h+='</div>';
   if(P.admin){
     var c=K.c;
     h+='<div class="card"><div class="h">Pengaturan (hanya Lukman)</div><div class="sm mut" style="margin-bottom:6px">Ubah baseline dan target. Kosongkan kolom target untuk menghapusnya. Target personal Iklan/Konten/Rujukan diisi setelah baseline November terkumpul (30 Nov).</div>'+
-      CFG_FIELDS.map(function(f){return '<label class="lbl">'+f[1]+'</label><input class="inp" type="number" step="1" min="0" id="cf_'+f[0]+'" value="'+(c[f[0]]==null?'':c[f[0]])+'">';}).join('')+
+      '<div class="cfg-grid">'+CFG_FIELDS.map(function(f){return '<div><label class="lbl">'+f[1]+'</label><input class="inp" type="number" step="1" min="0" id="cf_'+f[0]+'" value="'+(c[f[0]]==null?'':c[f[0]])+'"></div>';}).join('')+'</div>'+
       '<button class="btn" id="cf_save" onclick="saveCfg()">Simpan pengaturan</button></div>';
   }
   return h;
