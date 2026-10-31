@@ -146,7 +146,7 @@ var MONTH_ID=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus'
 var PEOPLE={
   Lukman:{role:'Manager Marketing + Advertising',krs:['mgr','ads'],angka:true,admin:true},
   Dicky:{role:'Brand Creator',krs:['brand']},
-  Tri:{role:'CS Kubah Emas',krs:['cs'],angka:true},
+  Tri:{role:'CS Kubah Emas',krs:['cs']},
   Faizal:{role:'CS Kumasindo',krs:['kum']}
 };
 var KRS={
@@ -226,7 +226,7 @@ function calc(){
       msConv:convBase+(convTarget-convBase)*f};
     if(r){
       var day=+r.asOf.slice(8), d=dim(ym);
-      var running=(ym===tm)&&day<d, k=running?d/day:1;
+      var running=day<d, k=running?d/day:1;   // entri yang bukan tanggal terakhir bulan selalu diproyeksikan (bulan lewat pun)
       m.asOf=r.asOf;m.day=day;m.dim=d;m.running=running;m.early=running&&day<7;m.factor=k;
       m.chat=r.chat;m.online=r.online;m.total=r.total;m.iklan=r.iklan;m.konten=r.konten;m.rujukan=r.rujukan;m.lainnya=r.lainnya;
       m.projOnline=r.online*k;m.projTotal=r.total*k;m.projIklan=r.iklan*k;m.projKonten=r.konten*k;m.projRujukan=r.rujukan*k;
