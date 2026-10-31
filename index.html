@@ -120,6 +120,7 @@ input[type=range]{width:100%;accent-color:#1F2128;height:34px}
   .vhead .mid{font-size:28px;margin-bottom:6px}
   .card{margin-bottom:0}
   .gridA{grid-template-columns:repeat(4,1fr)}
+  .gridB{grid-template-columns:repeat(3,1fr)}
   .grid2{margin-top:14px}
   .hb .sel{max-width:260px}
   .cfg-grid{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
@@ -440,35 +441,49 @@ function saveCheckin(){
 }
 
 // ═════════════ ANGKA BULANAN ═════════════
-var AF=[['chat','Chat masuk (kumulatif bulan ini)'],['online','Deal Online (kumulatif)'],['total','Total pembelian toko (kumulatif)'],['iklan','…dari Iklan'],['konten','…dari Konten'],['rujukan','…dari Rujukan Kumasindo'],['lainnya','…dari Lainnya / pelanggan lama / offline']];
+var AF_A=[['chat','Chat masuk'],['online','Beli lewat chat (Deal Online)'],['offline','Beli datang ke toko']];
+var AF_B=[['iklan','Dari Iklan'],['konten','Dari Konten'],['rujukan','Dari Rujukan Kumasindo'],['lainnya','Dari Lainnya']];
+var AF=AF_A.concat(AF_B);
 function vAngka(K){
   var rows=(D.angka||[]).slice().sort(function(a,b){return a.asOf<b.asOf?1:-1;}),last=rows[0]||{};
+  if(last.asOf)last=Object.assign({},last,{offline:Math.max(0,last.total-last.online)});   // total tersimpan = online + offline
+  var fld=function(f){return '<div><label class="lbl">'+f[1]+'</label><input class="inp" type="number" inputmode="numeric" min="0" step="1" id="a_'+f[0]+'" value="'+(last[f[0]]!=null?last[f[0]]:'')+'" oninput="angkaLive()"></div>';};
   var h='<div class="vhead"><div class="mid">Angka bulanan</div><div class="sm mut">Isi <b>kumulatif sejak tanggal 1</b> bulan itu, bukan angka per minggu. Satu tanggal = satu baris; mengisi tanggal yang sama akan menimpa.</div></div>';
-  h+='<div class="card"><label class="lbl">Angka per tanggal</label><input class="inp" type="date" id="a_asOf" value="'+today()+'" oninput="angkaLive()">';
-  h+='<div class="grid2 gridA">'+AF.map(function(f){return '<div><label class="lbl">'+f[1]+'</label><input class="inp" type="number" inputmode="numeric" min="0" step="1" id="a_'+f[0]+'" value="'+(last[f[0]]!=null?last[f[0]]:'')+'" oninput="angkaLive()"></div>';}).join('')+'</div>'+
-    '<div id="a_live" style="margin-top:14px"></div><button class="btn" id="a_save" onclick="saveAngka()">Simpan angka</button></div>';
-  h+=note('Kolom asal pelanggan (iklan, konten, rujukan, lainnya) wajib diisi dari catatan CS. Kalau jumlahnya kurang dari total pembelian, selisihnya tampil sebagai <b>belum teratribusi</b> dan porsi jalur tiap orang jadi terlalu kecil.','');
-  if(rows.length)h+='<div class="card g"><div class="h">Riwayat</div><table><tr><th>Tanggal</th><th class="r">Chat</th><th class="r">Online</th><th class="r">Total</th><th class="r">Oleh</th></tr>'+rows.slice(0,8).map(function(r){return '<tr><td>'+dLabel(r.asOf)+'</td><td class="r">'+n0(r.chat)+'</td><td class="r">'+n0(r.online)+'</td><td class="r">'+n0(r.total)+'</td><td class="r">'+esc(r.by)+'</td></tr>';}).join('')+'</table></div>';
+  h+='<div class="card"><label class="lbl">Angka per tanggal</label><input class="inp" type="date" id="a_asOf" value="'+today()+'" oninput="angkaLive()">'+
+    '<div class="h" style="margin:20px 0 4px">1 · Cara belinya</div><div class="sm mut" style="margin-bottom:10px">Chat masuk = semua chat. Beli lewat chat = kesepakatan terjadi di chat. Beli datang ke toko = datang langsung tanpa chat. Total pembelian dihitung otomatis dari dua angka beli.</div>'+
+    '<div class="grid2 gridB">'+AF_A.map(fld).join('')+'</div>'+
+    '<div class="h" style="margin:20px 0 4px">2 · Asalnya (hanya orang yang sudah membeli)</div><div class="sm mut" style="margin-bottom:10px">Dari mana pembeli tahu Kubah Emas, tanpa peduli beli lewat chat atau ke toko. Jumlah empat kolom ini sebaiknya sama dengan total pembelian.</div>'+
+    '<div class="grid2 gridA">'+AF_B.map(fld).join('')+'</div>'+
+    '<div id="a_live" style="margin-top:16px"></div><button class="btn" id="a_save" onclick="saveAngka()">Simpan angka</button></div>';
+  h+=note('Pembeli offline hanya tercatat asalnya kalau ada yang menanyakan "tahu Kubah Emas dari mana?". Kalau tidak ditanya, masukkan ke <b>Dari Lainnya</b>. Selisih yang belum terisi tampil sebagai <b>belum teratribusi</b> dan membuat porsi Iklan, Konten, dan Rujukan terlalu kecil.','');
+  if(rows.length)h+='<div class="card g"><div class="h">Riwayat</div><table><tr><th>Tanggal</th><th class="r">Chat</th><th class="r">Online</th><th class="r">Offline</th><th class="r">Total</th></tr>'+rows.slice(0,8).map(function(r){return '<tr><td>'+dLabel(r.asOf)+'</td><td class="r">'+n0(r.chat)+'</td><td class="r">'+n0(r.online)+'</td><td class="r">'+n0(Math.max(0,r.total-r.online))+'</td><td class="r">'+n0(r.total)+'</td></tr>';}).join('')+'</table></div>';
   return h;
 }
-function angkaVals(){var v={asOf:$('a_asOf').value},bad=[];AF.forEach(function(f){var s=$('a_'+f[0]).value;v[f[0]]=s===''?null:Number(s);if(s===''||isNaN(v[f[0]])||v[f[0]]<0||v[f[0]]!==Math.floor(v[f[0]]))bad.push(f[0]);});return {v:v,bad:bad};}
+function angkaVals(){
+  var v={asOf:$('a_asOf').value},bad=[];
+  AF.forEach(function(f){var s=$('a_'+f[0]).value;v[f[0]]=s===''?null:Number(s);if(s===''||isNaN(v[f[0]])||v[f[0]]<0||v[f[0]]!==Math.floor(v[f[0]]))bad.push(f[0]);});
+  if(!bad.length)v.total=v.online+v.offline;
+  return {v:v,bad:bad};
+}
 function angkaLive(){
-  var el=$('a_live');if(!el)return;var r=angkaVals(),v=r.v,msgs=[];
+  var el=$('a_live');if(!el)return;var r=angkaVals(),v=r.v;
   var sv=$('a_save');
   var outP=(v.asOf&&(v.asOf<PERIOD.start||v.asOf>PERIOD.end))?'<div class="sm" style="color:var(--warn);font-weight:700;margin-top:6px">Tanggal ini di luar periode OKR ('+dLabel(PERIOD.start)+' – '+dLabel(PERIOD.end)+'): angka akan tersimpan tapi tidak dihitung.</div>':'';
   if(r.bad.length){el.innerHTML='<div class="sm mut">Lengkapi semua kolom dengan bilangan bulat ≥ 0.</div>'+outP;sv.disabled=true;return;}
   var errs=[];
   if(!v.asOf)errs.push('Tanggal belum diisi.');
-  if(v.online>v.total)errs.push('Deal Online tidak boleh lebih besar dari Total Pembelian.');
   var sum=v.iklan+v.konten+v.rujukan+v.lainnya;
-  if(sum>v.total)errs.push('Jumlah asal pelanggan ('+n0(sum)+') melebihi Total Pembelian ('+n0(v.total)+').');
-  var html='<div class="sm">Konversi chat: <b>'+(v.chat>0?pc(v.online/v.chat):'—')+'</b> · Belum teratribusi: <b>'+n0(Math.max(0,v.total-sum))+'</b> dari '+n0(v.total)+' pembelian</div>';
+  if(sum>v.total)errs.push('Jumlah asal pembeli ('+n0(sum)+') melebihi Total pembelian ('+n0(v.total)+').');
+  var html='<div class="sm">Total pembelian: <b>'+n0(v.total)+'</b> (beli lewat chat '+n0(v.online)+' + datang ke toko '+n0(v.offline)+')</div>'+
+    '<div class="sm" style="margin-top:4px">Konversi chat: <b>'+(v.chat>0?pc(v.online/v.chat):'—')+'</b> · Asal tercatat: <b>'+n0(sum)+'</b> dari '+n0(v.total)+' · Belum teratribusi: <b>'+n0(Math.max(0,v.total-sum))+'</b></div>';
   html+=outP;
   if(errs.length)html+=errs.map(function(e){return '<div class="sm" style="color:var(--bad);font-weight:700;margin-top:6px">'+esc(e)+'</div>';}).join('');
   el.innerHTML=html;sv.disabled=errs.length>0;
 }
 function saveAngka(){
-  var r=angkaVals();if(r.bad.length)return;var p=Object.assign({action:'angka'},r.v);$('a_save').disabled=true;
+  var r=angkaVals();if(r.bad.length)return;var v=r.v;
+  var p={action:'angka',asOf:v.asOf,chat:v.chat,online:v.online,total:v.total,iklan:v.iklan,konten:v.konten,rujukan:v.rujukan,lainnya:v.lainnya};
+  $('a_save').disabled=true;
   saveAndReload(p,'Angka tersimpan').then(function(ok){if(!ok){var e=$('a_save');if(e)e.disabled=false;}});
 }
 
