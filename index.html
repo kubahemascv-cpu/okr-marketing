@@ -95,7 +95,13 @@ input[type=range]{width:100%;accent-color:#1F2128;height:34px}
 .conf{font-size:28px;font-weight:800;text-align:center}
 @media(max-width:380px){.big{font-size:32px}.grid2{grid-template-columns:1fr}}
 .vhead .mid{margin-bottom:4px}.vhead .sm{margin-bottom:14px}
-.cfg-grid{display:grid;grid-template-columns:1fr;gap:12px}
+.cfg-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
+.grp{margin:22px 0 4px;padding-top:16px;border-top:1px solid var(--bdr);font-size:13px}
+.grp:first-of-type{margin-top:14px}
+.grp .tag{margin-right:6px}
+.inp.ro{background:var(--bg2);color:var(--mut);cursor:not-allowed}
+table.auto td:first-child{font-weight:600}
+
 .nav button .nl{display:block}
 
 /* ═════════ DESKTOP (≥1000px): navigasi di samping, area utama melebar mengikuti layar ═════════ */
@@ -246,6 +252,12 @@ function calc(){
 function statusOf(p){return p==null?'na':p>=1?'ok':p>=0.7?'warn':'bad';}
 function statusTxt(p){return p==null?'—':p>=1?'On track':p>=0.7?'Waspada':'Tertinggal';}
 
+// KR personal (Iklan/Konten/Rujukan): patokan = angka November, naik bertahap ke target Januari (Nov patokan, Des tengah, Jan target)
+function persMs(id,K){
+  var c=K.c,m={ads:['projIklan',c.ads_target],brand:['projKonten',c.konten_target],kum:['projRujukan',c.rujukan_target]}[id],m1=K.months[0];
+  return {key:m[0],tgt:m[1],base:(m1&&m1.has)?m1[m[0]]:null};
+}
+function persRatio(v,base,tgt,i){var ms=base+(tgt-base)*((i-1)/2),den=ms-base;return den>0?(v-base)/den:(v>=ms?1:0);}
 // ukuran per KR (untuk kartu & review)
 function krInfo(id,K){
   var c=K.c,a=K.act,o={id:id,pct:null,st:null,big:'—',sub:'',extra:''};
@@ -261,14 +273,13 @@ function krInfo(id,K){
     }
     o.sub='Baseline '+pc(K.convBase)+' → target Januari '+pc(K.convTarget)+' (Deal Online ÷ chat masuk).';
   }else{
-    var key={ads:['projIklan','ads_target','iklan','iklan'],brand:['projKonten','konten_target','konten','konten'],kum:['projRujukan','rujukan_target','rujukan','rujukan']}[id];
-    var tgt=c[key[1]];
+    var pi=persMs(id,K),tgt=pi.tgt;
     if(a){
-      var v=a[key[0]];o.big=n0(v)+' pembelian'+(a.running?' (proyeksi bulan ini)':'');
+      var v=a[pi.key];o.big=n0(v)+' pembelian'+(a.running?' (proyeksi bulan ini)':'');
       o.extra='Porsi jalurmu: '+(a.projTotal>0?pc(v/a.projTotal):'—')+' dari total pembelian bulan ini';
-      if(tgt){o.pct=v/tgt;o.st=v/(tgt*a.i/3);}
+      if(tgt!=null&&pi.base!=null){var den=tgt-pi.base;o.pct=den>0?(v-pi.base)/den:(v>=tgt?1:0);o.st=a.i===1?null:persRatio(v,pi.base,tgt,a.i);}
     }
-    o.sub=tgt?'Target Januari: '+n0(tgt)+' pembelian per bulan.':'Target dikunci 30 Nov, setelah baseline November terkumpul.';
+    o.sub=tgt==null?'Target dikunci 30 Nov, setelah baseline November terkumpul.':pi.base!=null?'Patokan November '+n0(pi.base)+' → target Januari '+n0(tgt)+' pembelian per bulan. November tidak dinilai.':'Target Januari: '+n0(tgt)+' pembelian per bulan. Patokan November belum ada.';
   }
   return o;
 }
@@ -277,8 +288,7 @@ function krScore(id,m,K){ // skor 0.0-1.0 per bulan
   if(id==='online')s=(m.projOnline-c.online_base)/((m.msOnline-c.online_base)||1);
   else if(id==='conv'||id==='cs')s=m.conv==null?null:(m.conv-K.convBase)/((m.msConv-K.convBase)||1);
   else if(id==='mgr'){s=(m.i===3&&K.hbPct!=null)?K.hbPct/0.8:null;}
-  else{var t={ads:[c.ads_target,'projIklan'],brand:[c.konten_target,'projKonten'],kum:[c.rujukan_target,'projRujukan']}[id];
-    s=t[0]?m[t[1]]/(t[0]*m.i/3):null;}
+  else{var pi=persMs(id,K);s=(pi.tgt==null||pi.base==null||m.i===1)?null:persRatio(m[pi.key],pi.base,pi.tgt,m.i);}
   return s==null?null:clamp(s,0,1);
 }
 
@@ -521,7 +531,7 @@ function vReview(K){
   var rows=[['online','KR1 · Deal Online'],['conv','KR2 · Konversi chat'],['mgr','Lukman · Hambatan'],['ads','Lukman · Iklan'],['brand','Dicky · Konten'],['cs','Tri · Konversi CS'],['kum','Faizal · Rujukan']];
   h+='<div class="card g"><table><tr><th>KR</th>'+K.months.map(function(m){return '<th class="r">'+esc(ymShort(m.ym))+'</th>';}).join('')+'</tr>'+
     rows.map(function(r){return '<tr><td>'+r[1]+'</td>'+K.months.map(function(m){return '<td class="r"><b>'+sc(krScore(r[0],m,K))+'</b></td>';}).join('')+'</tr>';}).join('')+'</table>'+
-    '<div class="sm mut" style="margin-top:8px">"—" = belum ada angka atau target belum dikunci. Skor bulan berjalan memakai proyeksi.</div></div>';
+    '<div class="sm mut" style="margin-top:8px">"—" = belum ada angka, target belum dikunci, atau bulan itu tidak dinilai: Iklan/Konten/Rujukan memakai November sebagai patokan, dan Hambatan baru dinilai di Januari. Skor bulan berjalan memakai proyeksi.</div></div>';
   var ms=K.months.filter(function(m){return m.has;}).map(function(m){return m.ym;});
   if(!S.reviewMonth||ms.indexOf(S.reviewMonth)<0)S.reviewMonth=ms[ms.length-1]||PERIOD.months[0];
   var cur=(D.review||[]).filter(function(r){return r.month===S.reviewMonth;})[0];
@@ -530,13 +540,34 @@ function vReview(K){
   else h+='<div class="sm" style="white-space:pre-wrap">'+(cur&&cur.text?esc(cur.text):'<span class="mut">Belum ada catatan. Hanya Lukman yang menulis catatan evaluasi.</span>')+'</div>';
   h+='</div>';
   if(P.admin){
-    var c=K.c;
-    h+='<div class="card"><div class="h">Pengaturan (hanya Lukman)</div><div class="sm mut" style="margin-bottom:6px">Ubah baseline dan target. Kosongkan kolom target untuk menghapusnya. Target personal Iklan/Konten/Rujukan diisi setelah baseline November terkumpul (30 Nov).</div>'+
-      '<div class="cfg-grid">'+CFG_FIELDS.map(function(f){return '<div><label class="lbl">'+f[1]+'</label><input class="inp" type="number" step="1" min="0" id="cf_'+f[0]+'" value="'+(c[f[0]]==null?'':c[f[0]])+'"></div>';}).join('')+'</div>'+
-      '<button class="btn" id="cf_save" onclick="saveCfg()">Simpan pengaturan</button></div>';
+    var c=K.c,LBL={};CFG_FIELDS.forEach(function(f){LBL[f[0]]=f[1];});
+    var inp=function(k,ro){return '<div><label class="lbl">'+LBL[k]+'</label><input class="inp'+(ro?' ro':'')+'" type="number" step="1" min="0" id="cf_'+k+'" value="'+(c[k]==null?'':c[k])+'"'+(ro?' readonly':'')+'></div>';};
+    var fx=function(v){return v==null?'—':n0(v);};
+    var pb=function(id){var pi=persMs(id,K);return pi.base==null?'belum ada':n0(pi.base)+(K.months[0].running?' (proyeksi)':'');};
+    var ms=K.months;
+    h+='<div class="card"><div class="h">Pengaturan (hanya Lukman)</div>'+
+      '<div class="sm mut" style="margin-bottom:4px">Tiga kelompok: yang terkunci, yang dihitung otomatis, dan yang Lukman isi sendiri. Tombol simpan di paling bawah berlaku untuk semuanya.</div>'+
+      // 1. terkunci
+      '<div class="grp"><span class="tag na">TERKUNCI</span> <b>Patokan & target utama</b></div><div class="sm mut">Sudah disepakati. Jangan diubah kecuali rencananya berubah, karena semua skor dihitung dari sini.</div>'+
+      '<div class="cfg-grid">'+['chat_base','online_base','total_base','online_target','online_stretch'].map(function(k){return inp(k,true);}).join('')+'</div>'+
+      '<button class="btn ghost" id="cf_unlock" style="margin-top:12px" onclick="unlockCfg()">Buka kunci untuk mengubah</button>'+
+      // 2. otomatis
+      '<div class="grp"><span class="tag ok">OTOMATIS</span> <b>Dihitung app, hanya dibaca</b></div><div class="sm mut">Tidak ada yang perlu diisi. Berubah sendiri kalau angka di atas atau tab Angka berubah.</div>'+
+      '<table class="auto"><tr><th></th><th class="r">Nov</th><th class="r">Des</th><th class="r">Jan</th></tr>'+
+      '<tr><td>Target Deal Online</td>'+ms.map(function(m){return '<td class="r">'+fx(m.msOnline)+'</td>';}).join('')+'</tr>'+
+      '<tr><td>Target konversi chat</td>'+ms.map(function(m){return '<td class="r">'+pc(m.msConv)+'</td>';}).join('')+'</tr></table>'+
+      '<div class="sm" style="margin-top:8px">Konversi patokan: <b>'+pc(K.convBase)+'</b> ('+fx(c.online_base)+' ÷ '+fx(c.chat_base)+')</div>'+
+      '<div class="sm" style="margin-top:4px">Patokan November dari tab Angka: Iklan <b>'+pb('ads')+'</b> · Konten <b>'+pb('brand')+'</b> · Rujukan <b>'+pb('kum')+'</b></div>'+
+      // 3. manual
+      '<div class="grp"><span class="tag warn">ISI MANUAL</span> <b>Target Januari per jalur · diisi 30 November</b></div><div class="sm mut">Isi setelah Angka 30 November masuk, memakai patokan November di atas. Kosongkan kolom untuk menghapus target. Selama kosong, skor jalur itu tampil "—".</div>'+
+      '<div class="cfg-grid">'+['ads_target','konten_target','rujukan_target'].map(function(k){return inp(k,false);}).join('')+'</div>'+
+      '<div class="grp"><span class="tag warn">ISI MANUAL</span> <b>Konteks perusahaan · hanya label di Papan</b></div><div class="sm mut">Tidak mengubah skor apa pun.</div>'+
+      '<div class="cfg-grid">'+['total_target','total_target_final'].map(function(k){return inp(k,false);}).join('')+'</div>'+
+      '<button class="btn" id="cf_save" style="margin-top:18px" onclick="saveCfg()">Simpan pengaturan</button></div>';
   }
   return h;
 }
+function unlockCfg(){document.querySelectorAll('input.ro').forEach(function(i){i.removeAttribute('readonly');i.classList.remove('ro');});var b=$('cf_unlock');if(b)b.style.display='none';toast('Kunci terbuka. Hati-hati: semua skor dihitung dari angka ini.');}
 function saveReview(){$('rv_save').disabled=true;saveAndReload({action:'review',month:S.reviewMonth,text:$('rv_text').value.trim()},'Catatan tersimpan').then(function(ok){if(!ok){var e=$('rv_save');if(e)e.disabled=false;}});}
 function saveCfg(){
   var cur=cfg(),vals={},bad=null;
