@@ -131,6 +131,8 @@ table.auto td:first-child{font-weight:600}
   .grid2{margin-top:14px}
   .hb .sel{max-width:260px}
   .cfg-grid{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+  body.shell .papan-top{display:grid;grid-template-columns:repeat(auto-fit,minmax(400px,1fr));gap:16px;align-items:start}
+  .papan-top .stack{display:flex;flex-direction:column;gap:16px}
   .toast{bottom:28px;left:calc(50% + var(--sideW)/2)}
 }
 </style>
@@ -443,7 +445,7 @@ function savePeran(){
 function vPapan(K){
   var c=K.c,h='';
   h+='<div class="card hero"><div class="h">Objective · '+esc(dLabel(PERIOD.start))+' – '+esc(dLabel(PERIOD.end))+'</div><div class="mid" style="color:#fff">Lebih banyak orang yang bertanya di Kubah Emas akhirnya membeli.</div></div>';
-  h+=peranCard(K);
+  h+='<div class="papan-top">'+peranCard(K)+'<div class="stack">';
   // KR1
   h+='<div class="card g"><div class="kr-r">KR1 · bersama</div><div class="kr-t">Deal Online per bulan: '+n0(c.online_base)+' → '+n0(c.online_target)+' <span class="mut" style="font-weight:600">(stretch '+n0(c.online_stretch)+')</span></div>'+
     '<table style="margin-top:10px"><tr><th>Bulan</th><th class="r">Target</th><th class="r">Aktual</th><th class="r">Status</th></tr>'+
@@ -456,6 +458,7 @@ function vPapan(K){
     K.months.map(function(m){var p=m.has&&m.conv!=null?(m.conv-K.convBase)/((m.msConv-K.convBase)||1):null;
       return '<tr><td>'+esc(ymShort(m.ym))+'</td><td class="r">'+pc(m.msConv)+'</td><td class="r">'+(m.has&&m.conv!=null?pc(m.conv):'—')+'</td><td class="r"><span class="tag '+statusOf(p)+'">'+statusTxt(p)+'</span></td></tr>';}).join('')+
     '</table><div class="sm mut" style="margin-top:8px">Chat masuk tidak dikunci ('+n0(c.chat_base)+'/bulan baseline). Kalau chat naik, konversi bisa meleset walau Deal Online tercapai — itu wajar.</div></div>';
+  h+='</div></div>';
   // konteks total
   var a=K.act,fin=c.total_target_final===1;
   h+='<div class="card g"><div class="row"><div class="kr-t">Konteks: total pembelian toko</div><span class="tag '+(fin?'ok':'warn')+' sp">'+(fin?'Target final':'Target belum final')+'</span></div>'+
