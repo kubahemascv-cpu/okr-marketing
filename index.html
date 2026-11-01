@@ -96,6 +96,7 @@ input[type=range]{width:100%;accent-color:#1F2128;height:34px}
 @media(max-width:380px){.big{font-size:32px}.grid2{grid-template-columns:1fr}}
 .vhead .mid{margin-bottom:4px}.vhead .sm{margin-bottom:14px}
 .cfg-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
+.fungsi{font-size:13px;line-height:1.5;color:var(--txt2);margin:6px 0 8px}
 .grp{margin:22px 0 4px;padding-top:16px;border-top:1px solid var(--bdr);font-size:13px}
 .grp:first-of-type{margin-top:14px}
 .grp .tag{margin-right:6px}
@@ -163,6 +164,14 @@ var KRS={
   cs:{person:'Tri',role:'CS Kubah Emas',title:'Konversi chat yang ditangani menjadi pembelian'},
   kum:{person:'Faizal',role:'CS Kumasindo',title:'Pelanggan rujukan yang membeli di toko'}
 };
+var PERAN_DEFAULT={
+  mgr:'Mencari dan menyingkirkan hambatan terbesar yang membuat orang bertanya tapi tidak membeli.',
+  ads:'Membawa calon pembeli yang tepat lewat iklan, bukan sekadar chat yang banyak.',
+  brand:'Membuat konten yang membantu orang memutuskan membeli: bukti, harga, cara pesan.',
+  cs:'Mengubah chat yang masuk menjadi pembelian: balas cepat, jawab tuntas, tutup dengan deal.',
+  kum:'Mengajak pelanggan Kumasindo membeli di toko Kubah Emas lewat rujukan.'
+};
+var PERAN_MAX=200;
 var DEFAULTS={chat_base:1800,online_base:110,total_base:441,online_target:144,online_stretch:182,total_target:513,total_target_final:0,ads_target:null,konten_target:null,rujukan_target:null};
 var CFG_FIELDS=[
   ['chat_base','Chat masuk per bulan (baseline)'],['online_base','Deal Online per bulan (baseline)'],['total_base','Total pembelian per bulan (baseline)'],
@@ -172,7 +181,7 @@ var CFG_FIELDS=[
 ];
 
 // ═════════════ UTIL ═════════════
-var S={ok:false,who:'',tab:'home',loaded:false,err:'',krSel:'',reviewMonth:''};
+var S={ok:false,who:'',tab:'home',loaded:false,err:'',krSel:'',reviewMonth:'',peranEdit:''};
 var D={config:{},checkins:[],angka:[],hambatan:[],review:[]};
 function $(id){return document.getElementById(id);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -183,6 +192,8 @@ function today(){return dstr(new Date());}
 function pd(s){var a=s.split('-');return new Date(+a[0],+a[1]-1,+a[2]);}
 function weekStart(s){var d=pd(s||today());var w=(d.getDay()+6)%7;d.setDate(d.getDate()-w);return dstr(d);}
 function dim(ym){var a=ym.split('-');return new Date(+a[0],+a[1],0).getDate();}
+function peranRow(id){return (D.peran||[]).filter(function(r){return r.kr===id;})[0]||null;}
+function peranOf(id){var r=peranRow(id);return r&&r.text?r.text:PERAN_DEFAULT[id];}
 function ymLabel(ym){var a=ym.split('-');return MONTH_ID[+a[1]-1]+' '+a[0];}
 function ymShort(ym){var a=ym.split('-');return MONTH_ID[+a[1]-1].slice(0,3)+' '+a[0];}
 function dLabel(s){if(!s)return '—';var d=pd(s);return d.getDate()+' '+MONTH_ID[d.getMonth()].slice(0,3)+' '+d.getFullYear();}
@@ -197,7 +208,7 @@ function apiReady(){return APPS_SCRIPT_URL&&APPS_SCRIPT_URL.indexOf('PASTE_')!==
 function apiLoad(){
   return fetch(APPS_SCRIPT_URL+'?action=load&pin='+encodeURIComponent(PIN)+'&cb='+Date.now()).then(function(r){return r.json();}).then(function(j){
     if(!j.ok) throw new Error(j.error||'Server menolak permintaan');
-    D={config:j.config||{},checkins:j.checkins||[],angka:j.angka||[],hambatan:j.hambatan||[],review:j.review||[]};
+    D={config:j.config||{},checkins:j.checkins||[],angka:j.angka||[],hambatan:j.hambatan||[],review:j.review||[],peran:j.peran||[]};
   });
 }
 function apiPost(p){
@@ -356,7 +367,7 @@ function weekDone(person,kr){var w=weekStart();return (D.checkins||[]).some(func
 function lastConf(kr){var l=null;(D.checkins||[]).forEach(function(c){if(c.kr===kr&&(!l||c.week>l.week||(c.week===l.week&&c.ts>l.ts)))l=c;});return l;}
 function krCard(id,K){
   var o=krInfo(id,K),def=KRS[id],st=statusOf(o.st);
-  return '<div class="card g"><div class="kr-r">'+esc(def.role)+' · '+esc(def.person)+'</div><div class="kr-t">'+esc(def.title)+'</div>'+
+  return '<div class="card g"><div class="kr-r">'+esc(def.role)+' · '+esc(def.person)+'</div><div class="fungsi"><b>Fungsi:</b> '+esc(peranOf(id))+'</div><div class="kr-t">'+esc(def.title)+'</div>'+
     '<div class="row" style="margin-top:12px"><div class="mid">'+esc(o.big)+'</div><span class="tag '+st+' sp">'+(o.pct==null?'—':pc(o.pct,0))+'</span></div>'+
     bar(o.pct,statusOf(o.st))+(o.extra?'<div class="sm" style="margin-top:10px;font-weight:700">'+esc(o.extra)+'</div>':'')+
     '<div class="sm mut" style="margin-top:6px">'+esc(o.sub)+'</div>'+(o.pct!=null&&id!=='mgr'?'<div class="sm mut" style="margin-top:4px">Persen = jarak ke target Januari. Warna = dibanding target bulan ini.</div>':'')+'</div>';
@@ -398,10 +409,41 @@ function vHome(K){
   return h;
 }
 
+// ═════════════ PERAN TIM ═════════════
+var PERAN_ORDER=['mgr','ads','brand','cs','kum'];
+function peranCard(K){
+  var adm=PEOPLE[S.who].admin,h='<div class="card g"><div class="h">Peran tim · fungsi masing-masing menuju objective</div>';
+  h+='<div class="sm mut" style="margin-bottom:4px">'+(adm?'Anda yang menetapkan fungsi. Tim hanya bisa membaca.':'Fungsi ditetapkan oleh Lukman.')+'</div>';
+  PERAN_ORDER.forEach(function(id){
+    var d=KRS[id],ed=adm&&S.peranEdit===id,row=peranRow(id);
+    h+='<div class="hb"><div class="row"><div class="kr-t">'+esc(d.person)+' <span class="mut" style="font-weight:600">· '+esc(d.role)+'</span></div>'+
+      (adm&&!ed?'<button class="chip sp" onclick="editPeran(\''+id+'\')">Ubah</button>':'')+'</div>';
+    if(ed){
+      h+='<textarea class="ta" id="pn_text" maxlength="'+PERAN_MAX+'" oninput="peranCount()" style="margin-top:8px">'+esc(peranOf(id))+'</textarea>'+
+        '<div class="sm mut" id="pn_cnt" style="margin:4px 0 8px"></div>'+
+        '<div class="row" style="gap:8px"><button class="btn" id="pn_save" style="margin:0" onclick="savePeran()">Simpan fungsi</button><button class="btn ghost" style="margin:0" onclick="S.peranEdit=\'\';render()">Batal</button></div>';
+    }else{
+      h+='<div class="fungsi" style="margin-top:6px">'+esc(peranOf(id))+(adm&&!row?' <span class="tag na">draf awal</span>':'')+'</div>';
+    }
+    h+='<div class="sm mut" style="margin-top:6px">Ukuran: '+esc(d.title)+'</div></div>';
+  });
+  return h+'</div>';
+}
+function editPeran(id){S.peranEdit=id;render();var t=$('pn_text');if(t){t.focus();peranCount();}}
+function peranCount(){var t=$('pn_text'),c=$('pn_cnt');if(t&&c)c.textContent=t.value.length+' / '+PERAN_MAX+' karakter · satu atau dua kalimat saja';}
+function savePeran(){
+  var id=S.peranEdit,txt=$('pn_text').value.replace(/\s+/g,' ').trim();
+  if(!txt){toast('Fungsi tidak boleh kosong',true);return;}
+  $('pn_save').disabled=true;
+  apiPost({action:'peran',kr:id,text:txt}).then(function(){return apiLoad();}).then(function(){S.peranEdit='';toast('Fungsi tersimpan');render();})
+    .catch(function(e){var m=String(e.message||e);toast(/action tidak dikenal/.test(m)?'Apps Script belum diperbarui. Deploy ulang dengan versi baru (Deploy > Manage deployments > Edit > Version: New).':m,true);var x=$('pn_save');if(x)x.disabled=false;});
+}
+
 // ═════════════ PAPAN ═════════════
 function vPapan(K){
   var c=K.c,h='';
   h+='<div class="card hero"><div class="h">Objective · '+esc(dLabel(PERIOD.start))+' – '+esc(dLabel(PERIOD.end))+'</div><div class="mid" style="color:#fff">Lebih banyak orang yang bertanya di Kubah Emas akhirnya membeli.</div></div>';
+  h+=peranCard(K);
   // KR1
   h+='<div class="card g"><div class="kr-r">KR1 · bersama</div><div class="kr-t">Deal Online per bulan: '+n0(c.online_base)+' → '+n0(c.online_target)+' <span class="mut" style="font-weight:600">(stretch '+n0(c.online_stretch)+')</span></div>'+
     '<table style="margin-top:10px"><tr><th>Bulan</th><th class="r">Target</th><th class="r">Aktual</th><th class="r">Status</th></tr>'+
@@ -433,7 +475,7 @@ function vCheckin(K){
   var h='<div class="vhead"><div class="mid">Check-in minggu ini</div><div class="sm mut">Minggu mulai '+dLabel(w)+'. Cukup 1 menit.</div></div>';
   if(ks.length>1)h+='<div class="chips">'+ks.map(function(x){return '<button class="chip '+(x===k?'on':'')+'" onclick="S.krSel=\''+x+'\';render()">'+esc(KRS[x].role)+'</button>';}).join('')+'</div>';
   var o=krInfo(k,K);
-  h+='<div class="card"><div class="kr-r">'+esc(KRS[k].role)+'</div><div class="kr-t">'+esc(KRS[k].title)+'</div><div class="sm mut" style="margin-top:6px">Sekarang: <b>'+esc(o.big)+'</b></div></div>';
+  h+='<div class="card"><div class="kr-r">'+esc(KRS[k].role)+'</div><div class="fungsi"><b>Fungsi:</b> '+esc(peranOf(k))+'</div><div class="kr-t">'+esc(KRS[k].title)+'</div><div class="sm mut" style="margin-top:6px">Sekarang: <b>'+esc(o.big)+'</b></div></div>';
   if(ex)h+=note('Sudah diisi minggu ini. Menyimpan lagi akan <b>menimpa</b> isian sebelumnya.','ok');
   var cv=ex?ex.conf:7;
   h+='<div class="card g"><label class="lbl">Seberapa yakin KR ini tercapai? (1 = hampir pasti gagal, 10 = pasti tercapai)</label>'+
