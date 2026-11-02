@@ -365,6 +365,7 @@ function render(){
 // ═════════════ KOMPONEN ═════════════
 function note(t,type){return '<div class="note '+(type||'')+'"><span>'+(type==='warn'?'⚠️':type==='bad'?'❌':type==='ok'?'✅':'ℹ️')+'</span><span>'+t+'</span></div>';}
 function bar(p,cls){var w=p==null?0:clamp(p,0,1)*100;return '<div class="bar"><div class="fill '+(cls||statusOf(p))+'" style="width:'+w+'%"></div></div>';}
+function checkinDue(){var d=pd(today()).getDay();return d===0||d>=5;}   // jadwal check-in: Jumat sore; pengingat baru muncul Jumat s.d. Minggu
 function weekDone(person,kr){var w=weekStart();return (D.checkins||[]).some(function(c){return c.person===person&&c.kr===kr&&c.week===w;});}
 function lastConf(kr){var l=null;(D.checkins||[]).forEach(function(c){if(c.kr===kr&&(!l||c.week>l.week||(c.week===l.week&&c.ts>l.ts)))l=c;});return l;}
 function krCard(id,K){
@@ -395,7 +396,7 @@ function vHome(K){
   h+='</div>';
   // pengingat
   P.krs.forEach(function(k){
-    if(!weekDone(S.who,k))h+=note('<b>Check-in minggu ini belum diisi</b> untuk '+esc(KRS[k].role)+'. <a href="#" onclick="S.krSel=\''+k+'\';go(\'checkin\');return false" style="color:inherit;font-weight:800">Isi sekarang</a>','warn');
+    if(checkinDue()&&!weekDone(S.who,k))h+=note('<b>Check-in minggu ini belum diisi</b> untuk '+esc(KRS[k].role)+'. <a href="#" onclick="S.krSel=\''+k+'\';go(\'checkin\');return false" style="color:inherit;font-weight:800">Isi sekarang</a>','warn');
   });
   if(P.angka){
     var latest=(D.angka||[]).reduce(function(m,r){return r.asOf>m?r.asOf:m;},'');
@@ -467,7 +468,7 @@ function vPapan(K){
   // tim
   h+='<div class="card g"><div class="h">Tim · minggu ini</div><table><tr><th>Peran</th><th class="r">KR</th><th class="r">Yakin</th><th class="r">Check-in</th></tr>'+
     Object.keys(KRS).map(function(k){var o=krInfo(k,K),lc=lastConf(k),done=weekDone(KRS[k].person,k);
-      return '<tr><td><b>'+esc(KRS[k].person)+'</b><div class="sm mut">'+esc(KRS[k].role)+'</div></td><td class="r"><span class="tag '+statusOf(o.st)+'">'+(o.pct==null?'—':pc(o.pct,0))+'</span></td><td class="r">'+(lc?lc.conf+'/10':'—')+'</td><td class="r">'+(done?'✅':'<span class="mut">belum</span>')+'</td></tr>';}).join('')+'</table></div>';
+      return '<tr><td><b>'+esc(KRS[k].person)+'</b><div class="sm mut">'+esc(KRS[k].role)+'</div></td><td class="r"><span class="tag '+statusOf(o.st)+'">'+(o.pct==null?'—':pc(o.pct,0))+'</span></td><td class="r">'+(lc?lc.conf+'/10':'—')+'</td><td class="r">'+(done?'✅':'<span class="mut">'+(checkinDue()?'belum':'—')+'</span>')+'</td></tr>';}).join('')+'</table></div>';
   return h;
 }
 
@@ -475,7 +476,7 @@ function vPapan(K){
 function vCheckin(K){
   var P=PEOPLE[S.who],ks=P.krs;if(!S.krSel||ks.indexOf(S.krSel)<0)S.krSel=ks[0];
   var k=S.krSel,w=weekStart(),ex=(D.checkins||[]).filter(function(c){return c.person===S.who&&c.kr===k&&c.week===w;})[0];
-  var h='<div class="vhead"><div class="mid">Check-in minggu ini</div><div class="sm mut">Minggu mulai '+dLabel(w)+'. Cukup 1 menit.</div></div>';
+  var h='<div class="vhead"><div class="mid">Check-in minggu ini</div><div class="sm mut">Minggu mulai '+dLabel(w)+'. Cukup 1 menit. Jadwal: <b>Jumat sore</b>, paling lambat Minggu malam.</div></div>';
   if(ks.length>1)h+='<div class="chips">'+ks.map(function(x){return '<button class="chip '+(x===k?'on':'')+'" onclick="S.krSel=\''+x+'\';render()">'+esc(KRS[x].role)+'</button>';}).join('')+'</div>';
   var o=krInfo(k,K);
   h+='<div class="card"><div class="kr-r">'+esc(KRS[k].role)+'</div><div class="fungsi"><b>Fungsi:</b> '+esc(peranOf(k))+'</div><div class="kr-t">'+esc(KRS[k].title)+'</div><div class="sm mut" style="margin-top:6px">Sekarang: <b>'+esc(o.big)+'</b></div></div>';
