@@ -96,6 +96,8 @@ input[type=range]{width:100%;accent-color:#1F2128;height:34px}
 @media(max-width:380px){.big{font-size:32px}.grid2{grid-template-columns:1fr}}
 .vhead .mid{margin-bottom:4px}.vhead .sm{margin-bottom:14px}
 .cfg-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
+.objstrip{border-left:4px solid var(--m)}
+.objstrip .obj{font-size:16px;font-weight:800;line-height:1.35;margin:4px 0 6px}
 .fungsi{font-size:13px;line-height:1.5;color:var(--txt2);margin:6px 0 8px}
 .grp{margin:22px 0 4px;padding-top:16px;border-top:1px solid var(--bdr);font-size:13px}
 .grp:first-of-type{margin-top:14px}
@@ -152,6 +154,7 @@ table.auto td:first-child{font-weight:600}
 var APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbzMAsn2ClE8-Roz1UY5lkM7hHqw5T5ulNGOL0v0ybLIZhWHelUeoiFGjmYEHAILi52b/exec';   // URL Apps Script (/exec) — diisi setelah deploy
 var PIN='1601';
 var PERIOD={start:'2026-11-01',end:'2027-01-31',months:['2026-11','2026-12','2027-01']};
+var OBJ_TEXT='Lebih banyak orang yang bertanya di Kubah Emas akhirnya membeli.';
 var MONTH_ID=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 var PEOPLE={
   Lukman:{role:'Manager Marketing + Advertising',krs:['mgr','ads'],angka:true,admin:true},
@@ -377,11 +380,19 @@ function krCard(id,K){
 }
 
 // ═════════════ BERANDA ═════════════
+function objStrip(t){
+  var tot=Math.round((pd(PERIOD.end)-pd(PERIOD.start))/86400000)+1,day=Math.round((pd(t)-pd(PERIOD.start))/86400000)+1,line;
+  if(day<1)line='Periode mulai '+dLabel(PERIOD.start)+' ('+(1-day)+' hari lagi)';
+  else if(day>tot)line='Periode sudah selesai ('+dLabel(PERIOD.end)+')';
+  else line='Hari ke-'+day+' dari '+tot+' · '+(day===tot?'hari terakhir':(tot-day)+' hari lagi');
+  return '<div class="card objstrip"><div class="h">Objective bersama · 13 minggu</div><div class="obj">'+esc(OBJ_TEXT)+'</div><div class="sm mut">'+esc(line)+'</div></div>';
+}
 function vHome(K){
   var c=K.c,a=K.act,P=PEOPLE[S.who],h='';
   var t=today(),before=t<PERIOD.start;
   var sub=before?'Periode mulai '+dLabel(PERIOD.start)+'.':'Minggu ke-'+clamp(Math.floor((pd(t)-pd(PERIOD.start))/604800000)+1,1,13)+' dari 13 · berakhir '+dLabel(PERIOD.end);
   h+='<div class="vhead"><div class="mid">Halo, '+esc(S.who)+'</div><div class="sm mut">'+esc(sub)+'</div></div>';
+  h+=objStrip(t);
   // hero: kemajuan problem
   h+='<div class="card hero"><div class="h">Kemajuan problem · "Banyak tanya, sedikit yang membeli"</div>';
   if(a){
@@ -445,7 +456,7 @@ function savePeran(){
 // ═════════════ PAPAN ═════════════
 function vPapan(K){
   var c=K.c,h='';
-  h+='<div class="card hero"><div class="h">Objective · '+esc(dLabel(PERIOD.start))+' – '+esc(dLabel(PERIOD.end))+'</div><div class="mid" style="color:#fff">Lebih banyak orang yang bertanya di Kubah Emas akhirnya membeli.</div></div>';
+  h+='<div class="card hero"><div class="h">Objective · '+esc(dLabel(PERIOD.start))+' – '+esc(dLabel(PERIOD.end))+'</div><div class="mid" style="color:#fff">'+esc(OBJ_TEXT)+'</div></div>';
   h+='<div class="papan-top">'+peranCard(K)+'<div class="stack">';
   // KR1
   h+='<div class="card g"><div class="kr-r">KR1 · bersama</div><div class="kr-t">Deal Online per bulan: '+n0(c.online_base)+' → '+n0(c.online_target)+' <span class="mut" style="font-weight:600">(stretch '+n0(c.online_stretch)+')</span></div>'+
