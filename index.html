@@ -469,7 +469,29 @@ function vPapan(K){
   h+='<div class="card g"><div class="h">Tim · minggu ini</div><table><tr><th>Peran</th><th class="r">KR</th><th class="r">Yakin</th><th class="r">Check-in</th></tr>'+
     Object.keys(KRS).map(function(k){var o=krInfo(k,K),lc=lastConf(k),done=weekDone(KRS[k].person,k);
       return '<tr><td><b>'+esc(KRS[k].person)+'</b><div class="sm mut">'+esc(KRS[k].role)+'</div></td><td class="r"><span class="tag '+statusOf(o.st)+'">'+(o.pct==null?'—':pc(o.pct,0))+'</span></td><td class="r">'+(lc?lc.conf+'/10':'—')+'</td><td class="r">'+(done?'✅':'<span class="mut">'+(checkinDue()?'belum':'—')+'</span>')+'</td></tr>';}).join('')+'</table></div>';
+  h+=checkinTim(K);
   return h;
+}
+
+// ═════════════ CHECK-IN TIM (hanya Lukman) ═════════════
+function checkinTim(K){
+  if(!PEOPLE[S.who].admin)return '';
+  var h='<div class="card"><div class="h">Check-in tim · terbaru per peran</div><div class="sm mut" style="margin-bottom:4px">Hanya Lukman yang melihat bagian ini. Isi tulisan tiap orang dari check-in terakhir mereka. Tanda merah/kuning muncul kalau keyakinan 5 ke bawah, turun 2 poin atau lebih, atau belum check-in setelah hari Jumat.</div>';
+  var wk=weekStart();
+  PERAN_ORDER.forEach(function(id){
+    var d=KRS[id],list=(D.checkins||[]).filter(function(c){return c.person===d.person&&c.kr===id;}).sort(function(a,b){return a.week<b.week?1:a.week>b.week?-1:(a.ts<b.ts?1:-1);});
+    var cur=list[0],prev=list[1],isNow=!!cur&&cur.week===wk,tags=[];
+    if(cur&&cur.conf<=5)tags.push('<span class="tag bad">Yakin rendah</span>');
+    if(cur&&prev&&cur.conf-prev.conf<=-2)tags.push('<span class="tag warn">Turun '+(prev.conf-cur.conf)+' poin</span>');
+    if(checkinDue()&&!isNow)tags.push('<span class="tag warn">Belum check-in</span>');
+    h+='<div class="hb"><div class="row"><div class="kr-t">'+esc(d.person)+' <span class="mut" style="font-weight:600">· '+esc(d.role)+'</span></div>'+(tags.length?'<span class="sp" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">'+tags.join('')+'</span>':'')+'</div>';
+    if(!cur){h+='<div class="sm mut" style="margin-top:6px">Belum pernah check-in.</div></div>';return;}
+    h+='<div class="sm mut" style="margin:4px 0 6px">Minggu '+dLabel(cur.week)+(isNow?'':' (bukan minggu ini)')+' · Yakin <b>'+cur.conf+'/10</b>'+(prev?' (sebelumnya '+prev.conf+')':'')+'</div>'+
+      '<div class="sm"><b>Hambatan:</b> '+(cur.blocker?esc(cur.blocker):'<span class="mut">tidak ada</span>')+'</div>'+
+      '<div class="sm" style="margin-top:2px"><b>Rencana:</b> '+(cur.plan?esc(cur.plan):'<span class="mut">kosong</span>')+'</div>'+
+      (prev&&prev.blocker?'<div class="sm mut" style="margin-top:6px">Hambatan minggu '+dLabel(prev.week)+': '+esc(prev.blocker)+'</div>':'')+'</div>';
+  });
+  return h+'</div>';
 }
 
 // ═════════════ CHECK-IN ═════════════
