@@ -507,11 +507,11 @@ function vAngka(K){
   h+='<div class="card"><label class="lbl">Angka per tanggal</label><input class="inp" type="date" id="a_asOf" value="'+today()+'" oninput="angkaLive()">'+
     '<div class="h" style="margin:20px 0 4px">1 · Cara belinya</div><div class="sm mut" style="margin-bottom:10px">Chat masuk = semua chat. Beli lewat chat = kesepakatan terjadi di chat. Beli datang ke toko = datang langsung tanpa chat. Total pembelian dihitung otomatis dari dua angka beli.</div>'+
     '<div class="grid2 gridB">'+AF_A.map(fld).join('')+'</div>'+
-    '<div class="h" style="margin:20px 0 4px">2 · Asalnya (hanya orang yang sudah membeli)</div><div class="sm mut" style="margin-bottom:10px">Dari mana pembeli tahu Kubah Emas, tanpa peduli beli lewat chat atau ke toko. Jumlah empat kolom ini sebaiknya sama dengan total pembelian.</div>'+
+    '<div class="h" style="margin:20px 0 4px">2 · Asalnya (hanya orang yang sudah membeli)</div><div class="sm mut" style="margin-bottom:10px">Dari mana pembeli tahu Kubah Emas, tanpa peduli beli lewat chat atau ke toko. Isi hanya yang sudah ditanya asalnya. Yang belum ditanya jangan dimasukkan ke Lainnya: biarkan jadi belum teratribusi.</div>'+
     '<div class="grid2 gridA">'+AF_B.map(fld).join('')+'</div>'+
     '<div id="a_live" style="margin-top:16px"></div><button class="btn" id="a_save" onclick="saveAngka()">Simpan angka</button></div>';
-  h+=note('Pembeli offline hanya tercatat asalnya kalau ada yang menanyakan "tahu Kubah Emas dari mana?". Kalau tidak ditanya, masukkan ke <b>Dari Lainnya</b>. Selisih yang belum terisi tampil sebagai <b>belum teratribusi</b> dan membuat porsi Iklan, Konten, dan Rujukan terlalu kecil.','');
-  if(rows.length)h+='<div class="card g"><div class="h">Riwayat</div><table><tr><th>Tanggal</th><th class="r">Chat</th><th class="r">Online</th><th class="r">Offline</th><th class="r">Total</th></tr>'+rows.slice(0,8).map(function(r){return '<tr><td>'+dLabel(r.asOf)+'</td><td class="r">'+n0(r.chat)+'</td><td class="r">'+n0(r.online)+'</td><td class="r">'+n0(Math.max(0,r.total-r.online))+'</td><td class="r">'+n0(r.total)+'</td></tr>';}).join('')+'</table></div>';
+  h+=note('<b>Dari Lainnya</b> hanya untuk jawaban selain iklan, konten, dan rujukan (teman atau tukang lain, spanduk, lewat toko, pelanggan lama). Pembeli yang tidak ditanya asalnya dibiarkan: selisihnya tampil sebagai <b>belum teratribusi</b> dan menjadi ukuran disiplin pencatatan. Kalau besar, porsi Iklan, Konten, dan Rujukan terlalu kecil.','');
+  if(rows.length)h+='<div class="card g"><div class="h">Riwayat</div><table><tr><th>Tanggal</th><th class="r">Chat</th><th class="r">Online</th><th class="r">Offline</th><th class="r">Total</th><th class="r">Asal</th></tr>'+rows.slice(0,8).map(function(r){return '<tr><td>'+dLabel(r.asOf)+'</td><td class="r">'+n0(r.chat)+'</td><td class="r">'+n0(r.online)+'</td><td class="r">'+n0(Math.max(0,r.total-r.online))+'</td><td class="r">'+n0(r.total)+'</td><td class="r">'+(r.total>0?pc((r.iklan+r.konten+r.rujukan+r.lainnya)/r.total,0):'—')+'</td></tr>';}).join('')+'</table></div>';
   return h;
 }
 function angkaVals(){
@@ -530,7 +530,7 @@ function angkaLive(){
   var sum=v.iklan+v.konten+v.rujukan+v.lainnya;
   if(sum>v.total)errs.push('Jumlah asal pembeli ('+n0(sum)+') melebihi Total pembelian ('+n0(v.total)+').');
   var html='<div class="sm">Total pembelian: <b>'+n0(v.total)+'</b> (beli lewat chat '+n0(v.online)+' + datang ke toko '+n0(v.offline)+')</div>'+
-    '<div class="sm" style="margin-top:4px">Konversi chat: <b>'+(v.chat>0?pc(v.online/v.chat):'—')+'</b> · Asal tercatat: <b>'+n0(sum)+'</b> dari '+n0(v.total)+' · Belum teratribusi: <b>'+n0(Math.max(0,v.total-sum))+'</b></div>';
+    '<div class="sm" style="margin-top:4px">Konversi chat: <b>'+(v.chat>0?pc(v.online/v.chat):'—')+'</b> · Asal tercatat: <b>'+n0(sum)+'</b> dari '+n0(v.total)+(v.total>0?' ('+pc(sum/v.total,0)+')':'')+' · Belum teratribusi: <b>'+n0(Math.max(0,v.total-sum))+'</b></div>';
   html+=outP;
   if(errs.length)html+=errs.map(function(e){return '<div class="sm" style="color:var(--bad);font-weight:700;margin-top:6px">'+esc(e)+'</div>';}).join('');
   el.innerHTML=html;sv.disabled=errs.length>0;
