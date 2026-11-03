@@ -98,6 +98,9 @@ input[type=range]{width:100%;accent-color:#1F2128;height:34px}
 .cfg-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
 .objstrip{border-left:4px solid var(--m)}
 .objstrip .obj{font-size:16px;font-weight:800;line-height:1.35;margin:4px 0 6px}
+.chks{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px}
+.chks label{display:flex;align-items:center;gap:7px;border:1.5px solid var(--bdr);border-radius:12px;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;background:var(--card)}
+.chks input{width:16px;height:16px;accent-color:var(--m)}
 .fungsi{font-size:13px;line-height:1.5;color:var(--txt2);margin:6px 0 8px}
 .grp{margin:22px 0 4px;padding-top:16px;border-top:1px solid var(--bdr);font-size:13px}
 .grp:first-of-type{margin-top:14px}
@@ -186,7 +189,7 @@ var CFG_FIELDS=[
 ];
 
 // ═════════════ UTIL ═════════════
-var S={ok:false,who:'',tab:'home',loaded:false,err:'',krSel:'',reviewMonth:'',peranEdit:''};
+var S={ok:false,who:'',tab:'home',loaded:false,err:'',krSel:'',reviewMonth:'',peranEdit:'',hbEdit:''};
 var D={config:{},checkins:[],angka:[],hambatan:[],review:[]};
 function $(id){return document.getElementById(id);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
@@ -415,10 +418,10 @@ function vHome(K){
   }
   P.krs.forEach(function(k){h+=krCard(k,K);});
   // hambatan milikku
-  var mine=(D.hambatan||[]).filter(function(x){return x.owner===S.who&&x.status!=='Selesai';});
-  h+='<div class="card g"><div class="h">Hambatan di tangan Anda</div>';
+  var mine=(D.hambatan||[]).filter(function(x){return hbMine(x,S.who)&&x.status!=='Selesai';});
+  h+='<div class="card g"><div class="h">Hambatan yang melibatkan Anda</div>';
   if(!mine.length)h+='<div class="sm mut">Tidak ada hambatan terbuka.</div>';
-  else h+=mine.map(function(x){return '<div class="hb"><div class="kr-t">'+esc(x.title)+'</div><div class="sm mut">'+esc(x.status)+' · tenggat '+dLabel(x.due)+(x.due&&x.due<t?' <b style="color:var(--bad)">terlambat</b>':'')+'</div></div>';}).join('');
+  else h+=mine.map(function(x){var own=x.owner===S.who;return '<div class="hb"><div class="row"><div class="kr-t">'+esc(x.title)+'</div><span class="tag sp '+(own?'bad':'na')+'">'+(own?'Pemilik':'Terlibat')+'</span></div><div class="sm mut">'+esc(x.status)+' · tenggat '+dLabel(x.due)+(x.due&&x.due<t?' <b style="color:var(--bad)">terlambat</b>':'')+'</div><div class="sm mut">'+hbWho(x)+'</div>'+(x.note?'<div class="sm" style="margin-top:4px">'+esc(x.note)+'</div>':'')+'</div>';}).join('');
   h+='</div>';
   return h;
 }
@@ -578,29 +581,55 @@ function saveAngka(){
 
 // ═════════════ HAMBATAN ═════════════
 var HB_OPEN=false;
+function hbInv(x){return String(x.terlibat||'').split(',').map(function(n){return n.trim();}).filter(Boolean);}
+function hbMine(x,who){return x.owner===who||hbInv(x).indexOf(who)>=0;}
+function hbWho(x){var iv=hbInv(x);return 'Pemilik: <b>'+esc(x.owner)+'</b>'+(iv.length?' · Terlibat: '+esc(iv.join(', ')):'');}
+function hbChecks(pre,sel){return '<div class="chks">'+Object.keys(PEOPLE).map(function(n){return '<label><input type="checkbox" id="'+pre+'_inv_'+n+'"'+(sel.indexOf(n)>=0?' checked':'')+'>'+esc(n)+'</label>';}).join('')+'</div>';}
+function hbRead(pre,owner){return Object.keys(PEOPLE).filter(function(n){var e=$(pre+'_inv_'+n);return e&&e.checked&&n!==owner;}).join(',');}
+function ownerSel(id,cur){return '<select class="sel" id="'+id+'">'+Object.keys(PEOPLE).map(function(n){return '<option'+(n===cur?' selected':'')+'>'+n+'</option>';}).join('')+'</select>';}
+function hbSave(p,okMsg){
+  return saveAndReload(p,okMsg).then(function(ok){
+    if(ok&&p.terlibat){var x=(D.hambatan||[]).filter(function(h){return h.id===p.id;})[0];
+      if(x&&x.terlibat===undefined)toast('Terlibat TIDAK tersimpan: Apps Script belum diperbarui. Deploy ulang kode terbaru dulu.',true);}
+    return ok;});
+}
 function vHambatan(K){
-  var hb=(D.hambatan||[]).slice(),t=today(),ord={Terbuka:0,Dikerjakan:1,Selesai:2};
+  var hb=(D.hambatan||[]).slice(),t=today(),ord={Terbuka:0,Dikerjakan:1,Selesai:2},adm=PEOPLE[S.who].admin;
   hb.sort(function(a,b){var d=ord[a.status]-ord[b.status];if(d)return d;var x=a.due||'9999',y=b.due||'9999';return x<y?-1:x>y?1:0;});
   var h='<div class="vhead"><div class="mid">Hambatan</div><div class="sm mut">'+K.hbClosed+' dari '+K.hbTotal+' tertutup. Target akhir: ≥80%.</div></div>';
   h+='<button class="btn ghost" style="margin:0 0 14px" onclick="HB_OPEN=!HB_OPEN;render()">'+(HB_OPEN?'Tutup form':'+ Tambah hambatan')+'</button>';
   if(HB_OPEN)h+='<div class="card narrow"><label class="lbl">Apa hambatannya?</label><input class="inp" id="hb_title" maxlength="120" placeholder="mis. Chat malam telat dibalas">'+
-    '<div class="grid2"><div><label class="lbl">Yang memperbaiki</label><select class="sel" id="hb_owner">'+Object.keys(PEOPLE).map(function(n){return '<option'+(n===S.who?' selected':'')+'>'+n+'</option>';}).join('')+'</select></div>'+
-    '<div><label class="lbl">Tenggat</label><input class="inp" type="date" id="hb_due"></div></div><label class="lbl">Catatan (opsional)</label><textarea class="ta" id="hb_note" maxlength="500"></textarea>'+
+    '<div class="grid2"><div><label class="lbl">Pemilik (1 orang, yang menjawab selesai atau belum)</label>'+ownerSel('hb_owner',S.who)+'</div>'+
+    '<div><label class="lbl">Tenggat</label><input class="inp" type="date" id="hb_due"></div></div>'+
+    '<label class="lbl">Terlibat (opsional, ikut melihat pengingat di Beranda)</label>'+hbChecks('hb',[])+
+    '<label class="lbl">Catatan: siapa mengerjakan apa (opsional)</label><textarea class="ta" id="hb_note" maxlength="500" placeholder="mis. Faizal: script + SOP. Tri: eksekusi."></textarea>'+
     '<button class="btn" id="hb_save" onclick="addHambatan()">Simpan hambatan</button></div>';
   h+='<div class="card">'+(hb.length?hb.map(function(x){
+    if(adm&&S.hbEdit===x.id)return '<div class="hb"><label class="lbl">Hambatan</label><input class="inp" id="he_title" maxlength="120" value="'+esc(x.title)+'">'+
+      '<div class="grid2"><div><label class="lbl">Pemilik</label>'+ownerSel('he_owner',x.owner)+'</div><div><label class="lbl">Tenggat</label><input class="inp" type="date" id="he_due" value="'+esc(x.due)+'"></div></div>'+
+      '<label class="lbl">Terlibat</label>'+hbChecks('he',hbInv(x))+
+      '<label class="lbl">Catatan: siapa mengerjakan apa</label><textarea class="ta" id="he_note" maxlength="500">'+esc(x.note)+'</textarea>'+
+      '<div class="row" style="gap:8px"><button class="btn" id="he_save" onclick="saveHbEdit(\''+esc(x.id)+'\')">Simpan</button><button class="btn ghost" onclick="S.hbEdit=null;render()">Batal</button></div></div>';
     return '<div class="hb"><div class="row"><div class="kr-t">'+esc(x.title)+'</div><span class="tag sp '+(x.status==='Selesai'?'ok':x.status==='Dikerjakan'?'warn':'bad')+'">'+esc(x.status)+'</span></div>'+
-      '<div class="sm mut" style="margin:4px 0 8px">'+esc(x.owner)+' · tenggat '+dLabel(x.due)+(x.status!=='Selesai'&&x.due&&x.due<t?' <b style="color:var(--bad)">terlambat</b>':'')+(x.note?' · '+esc(x.note):'')+'</div>'+
-      '<select class="sel" style="height:38px;font-size:12.5px" onchange="setHb(\''+esc(x.id)+'\',this.value)">'+['Terbuka','Dikerjakan','Selesai'].map(function(s){return '<option'+(s===x.status?' selected':'')+'>'+s+'</option>';}).join('')+'</select></div>';}).join(''):'<div class="sm mut">Belum ada hambatan. Target: ≥3 hambatan prioritas terdata sampai 14 Nov.</div>')+'</div>';
+      '<div class="sm mut" style="margin:4px 0 8px">'+hbWho(x)+' · tenggat '+dLabel(x.due)+(x.status!=='Selesai'&&x.due&&x.due<t?' <b style="color:var(--bad)">terlambat</b>':'')+'</div>'+(x.note?'<div class="sm" style="margin:0 0 8px">'+esc(x.note)+'</div>':'')+
+      '<div class="row" style="gap:8px"><select class="sel" style="height:38px;font-size:12.5px" onchange="setHb(\''+esc(x.id)+'\',this.value)">'+['Terbuka','Dikerjakan','Selesai'].map(function(s){return '<option'+(s===x.status?' selected':'')+'>'+s+'</option>';}).join('')+'</select>'+
+      (adm?'<button class="btn ghost" style="width:auto;padding:0 16px;height:38px" onclick="S.hbEdit=\''+esc(x.id)+'\';render()">Ubah</button>':'')+'</div></div>';}).join(''):'<div class="sm mut">Belum ada hambatan. Target: ≥3 hambatan prioritas terdata sampai 14 Nov.</div>')+'</div>';
   return h;
 }
 function addHambatan(){
   var title=$('hb_title').value.trim();if(!title){toast('Judul hambatan masih kosong',true);return;}
-  $('hb_save').disabled=true;HB_OPEN=false;
-  saveAndReload({action:'hambatan',id:uid('h'),title:title,owner:$('hb_owner').value,due:$('hb_due').value,status:'Terbuka',note:$('hb_note').value.trim()},'Hambatan tersimpan').then(function(ok){if(!ok){HB_OPEN=true;render();}});
+  var ow=$('hb_owner').value;$('hb_save').disabled=true;HB_OPEN=false;
+  hbSave({action:'hambatan',id:uid('h'),title:title,owner:ow,due:$('hb_due').value,status:'Terbuka',note:$('hb_note').value.trim(),terlibat:hbRead('hb',ow)},'Hambatan tersimpan').then(function(ok){if(!ok){HB_OPEN=true;render();}});
+}
+function saveHbEdit(id){
+  var x=(D.hambatan||[]).filter(function(h){return h.id===id;})[0];if(!x)return;
+  var title=$('he_title').value.trim();if(!title){toast('Judul hambatan masih kosong',true);return;}
+  var ow=$('he_owner').value;$('he_save').disabled=true;
+  hbSave({action:'hambatan',id:id,title:title,owner:ow,due:$('he_due').value,status:x.status,note:$('he_note').value.trim(),terlibat:hbRead('he',ow)},'Hambatan diubah').then(function(ok){if(ok)S.hbEdit=null;else $('he_save').disabled=false;render();});
 }
 function setHb(id,status){
   var x=(D.hambatan||[]).filter(function(h){return h.id===id;})[0];if(!x)return;
-  saveAndReload({action:'hambatan',id:x.id,title:x.title,owner:x.owner,due:x.due,status:status,note:x.note},'Status diperbarui');
+  saveAndReload({action:'hambatan',id:x.id,title:x.title,owner:x.owner,due:x.due,status:status,note:x.note,terlibat:x.terlibat===undefined?undefined:x.terlibat},'Status diperbarui');
 }
 
 // ═════════════ REVIEW + PENGATURAN ═════════════
