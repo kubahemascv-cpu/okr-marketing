@@ -99,6 +99,10 @@ input[type=range]{width:100%;accent-color:#1F2128;height:34px}
 .objstrip{border-left:4px solid var(--m)}
 .objstrip .obj{font-size:16px;font-weight:800;line-height:1.35;margin:4px 0 6px}
 .nav-in.dense button{font-size:9.5px;white-space:nowrap;padding:7px 0}@media (min-width:1000px){.nav-in.dense button{font-size:13.5px;padding:12px 14px}}
+.splitbar{display:flex;height:10px;border-radius:99px;overflow:hidden;background:var(--bdr);margin:12px 0 8px}.splitbar span{display:block;height:100%}
+.sp-v{background:var(--m-hi)}.sp-k{background:var(--m-d)}
+.splitrow{display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:4px 0}.sdot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;vertical-align:-1px}
+.splitcard .note{margin:10px 0}
 .chks{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px}
 .chks label{display:flex;align-items:center;gap:7px;border:1.5px solid var(--bdr);border-radius:12px;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;background:var(--card)}
 .chks input{width:16px;height:16px;accent-color:var(--m)}
@@ -256,7 +260,7 @@ function calc(){
       var running=day<d, k=running?d/day:1;   // entri yang bukan tanggal terakhir bulan selalu diproyeksikan (bulan lewat pun)
       m.asOf=r.asOf;m.day=day;m.dim=d;m.running=running;m.early=running&&day<7;m.factor=k;
       m.chat=r.chat;m.online=r.online;m.total=r.total;m.iklan=r.iklan;m.konten=r.konten;m.rujukan=r.rujukan;m.lainnya=r.lainnya;
-      m.projOnline=r.online*k;m.projTotal=r.total*k;m.projIklan=r.iklan*k;m.projKonten=r.konten*k;m.projRujukan=r.rujukan*k;
+      m.projChat=r.chat*k;m.projOnline=r.online*k;m.projTotal=r.total*k;m.projIklan=r.iklan*k;m.projKonten=r.konten*k;m.projRujukan=r.rujukan*k;
       m.conv=r.chat>0?r.online/r.chat:null;
       m.unattr=r.total-(r.iklan+r.konten+r.rujukan+r.lainnya);
     }
@@ -462,6 +466,43 @@ function savePeran(){
 }
 
 // ═════════════ PAPAN ═════════════
+// pemisah volume vs konversi: Deal Online = chat masuk × konversi.
+// efek chat = (chat sekarang − chat baseline) × konversi baseline; sisanya = efek konversi (jumlahnya persis selisih Deal Online)
+function splitVol(K){
+  var a=K.act,c=K.c;
+  if(!a||!(c.chat_base>0)||!(a.chat>0)||a.conv==null)return null;
+  var C0=c.chat_base,D0=c.online_base,r0=D0/C0,C1=a.projChat,D1=a.projOnline,d=D1-D0,v=(C1-C0)*r0;
+  return {a:a,C0:C0,C1:C1,D0:D0,D1:D1,r0:r0,r1:a.conv,d:d,v:v,k:d-v};
+}
+function splitVerdict(s){
+  var d=s.d,v=s.v,k=s.k;
+  if(Math.abs(d)<1&&Math.abs(v)<1)return ['','Belum ada perubahan berarti dari baseline.'];
+  if(d>0){
+    if(k>=0.7*d)return ['ok','Kenaikan sebagian besar dari <b>konversi</b>. Ini yang dicari untuk masalah "banyak tanya, sedikit membeli".'+(v<0?' Chat masuk justru turun.':'')];
+    if(v>=0.5*d)return ['warn','Kenaikan sebagian besar dari <b>jumlah chat</b>, bukan konversi. Belum membuktikan penanya lebih sering membeli.'+(k<0?' Konversi justru turun.':'')];
+    return ['','Kenaikan datang dari chat dan konversi bersama-sama.'];
+  }
+  if(k<0&&v<0)return ['bad','Deal Online di bawah baseline: chat dan konversi sama-sama turun.'];
+  if(k<0)return ['bad','Deal Online di bawah baseline karena <b>konversi turun</b>. Chat masuk menahan.'];
+  return ['warn','Deal Online di bawah baseline karena <b>chat turun</b>. Konversi menahan.'];
+}
+function sg(n){var r=Math.round(n);return r===0?'0':(r>0?'+':'−')+n0(Math.abs(r));}
+function splitCard(K){
+  var s=splitVol(K);if(!s)return '';
+  var D=Math.round(s.d),V=Math.round(s.v),Kc=D-V,vd=splitVerdict(s),a=s.a,pt=(s.r1-s.r0)*100;
+  var bar='';
+  if(s.d>0&&s.v>=0&&s.k>=0){var pv=s.v/s.d*100;bar='<div class="splitbar"><span class="sp-v" style="width:'+pv.toFixed(1)+'%"></span><span class="sp-k" style="width:'+(100-pv).toFixed(1)+'%"></span></div>';}
+  return '<div class="card g splitcard"><div class="kr-r">Pemisah volume dan konversi</div><div class="kr-t">Dari mana selisih Deal Online?</div>'+
+    '<div class="sm mut" style="margin-top:4px">Deal Online = chat masuk × konversi. Kartu ini memisahkan keduanya.</div>'+
+    '<table style="margin-top:10px"><tr><th></th><th class="r">Baseline</th><th class="r">'+esc(ymShort(a.ym))+(a.running?' (proyeksi)':'')+'</th><th class="r">Selisih</th></tr>'+
+    '<tr><td>Chat masuk</td><td class="r">'+n0(s.C0)+'</td><td class="r">'+n0(s.C1)+'</td><td class="r">'+sg(s.C1-s.C0)+'</td></tr>'+
+    '<tr><td>Konversi</td><td class="r">'+pc(s.r0)+'</td><td class="r">'+pc(s.r1)+'</td><td class="r">'+(Math.abs(pt)<0.05?'0':(pt>0?'+':'−')+Math.abs(pt).toFixed(1).replace('.',','))+' poin</td></tr>'+
+    '<tr><td><b>Deal Online</b></td><td class="r">'+n0(s.D0)+'</td><td class="r">'+n0(s.D1)+'</td><td class="r"><b>'+sg(D)+'</b></td></tr></table>'+bar+
+    '<div class="splitrow"><span><i class="sdot sp-v"></i>Karena chat masuk berubah</span><b>'+sg(V)+'</b></div>'+
+    '<div class="splitrow"><span><i class="sdot sp-k"></i>Karena konversi berubah</span><b>'+sg(Kc)+'</b></div>'+
+    note(vd[1],vd[0])+
+    '<div class="sm mut">Efek chat = (chat sekarang − chat baseline) × konversi baseline. Sisanya efek konversi.'+(a.running?' Bulan berjalan memakai proyeksi'+(a.early?' awal (baru tanggal '+a.day+'), jadi pecahan ini masih bisa bergeser banyak':'')+'.':'')+'</div></div>';
+}
 function vPapan(K){
   var c=K.c,h='';
   h+='<div class="card hero"><div class="h">Objective · '+esc(dLabel(PERIOD.start))+' – '+esc(dLabel(PERIOD.end))+'</div><div class="mid" style="color:#fff">'+esc(OBJ_TEXT)+'</div></div>';
@@ -479,6 +520,7 @@ function vPapan(K){
       return '<tr><td>'+esc(ymShort(m.ym))+'</td><td class="r">'+pc(m.msConv)+'</td><td class="r">'+(m.has&&m.conv!=null?pc(m.conv):'—')+'</td><td class="r"><span class="tag '+statusOf(p)+'">'+statusTxt(p)+'</span></td></tr>';}).join('')+
     '</table><div class="sm mut" style="margin-top:8px">Chat masuk tidak dikunci ('+n0(c.chat_base)+'/bulan baseline). Kalau chat naik, konversi bisa meleset walau Deal Online tercapai — itu wajar.</div></div>';
   h+='</div></div>';
+  h+=splitCard(K);
   // konteks total
   var a=K.act,fin=c.total_target_final===1;
   h+='<div class="card g"><div class="row"><div class="kr-t">Konteks: total pembelian toko</div><span class="tag '+(fin?'ok':'warn')+' sp">'+(fin?'Target final':'Target belum final')+'</span></div>'+
