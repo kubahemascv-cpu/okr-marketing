@@ -98,6 +98,7 @@ input[type=range]{width:100%;accent-color:#1F2128;height:34px}
 .cfg-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
 .objstrip{border-left:4px solid var(--m)}
 .objstrip .obj{font-size:16px;font-weight:800;line-height:1.35;margin:4px 0 6px}
+.nav-in.dense button{font-size:9.5px;white-space:nowrap;padding:7px 0}@media (min-width:1000px){.nav-in.dense button{font-size:13.5px;padding:12px 14px}}
 .chks{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px}
 .chks label{display:flex;align-items:center;gap:7px;border:1.5px solid var(--bdr);border-radius:12px;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;background:var(--card)}
 .chks input{width:16px;height:16px;accent-color:var(--m)}
@@ -353,6 +354,8 @@ function nav(){
   var P=PEOPLE[S.who],items=[['home','🏠','Beranda'],['papan','📊','Papan'],['checkin','✅','Check-in']];
   if(P.angka)items.push(['angka','🔢','Angka']);
   items.push(['hambatan','🚧','Hambatan'],['review','🏁','Review']);
+  if(P.admin)items.splice(1,0,['tugas','📌','Tugas']);
+  $('navin').classList.toggle('dense',items.length>6);
   $('navin').innerHTML=items.map(function(i){return '<button class="'+(S.tab===i[0]?'on':'')+'" onclick="go(\''+i[0]+'\')"><span class="ic">'+i[1]+'</span>'+i[2]+'</button>';}).join('');
 }
 function go(t){S.tab=t;render();window.scrollTo(0,0);}
@@ -362,8 +365,9 @@ function render(){
   if(S.err&&!S.loaded){$('view').innerHTML='<div class="card"><div class="mid" style="margin-bottom:8px">Gagal memuat data</div><div class="sm mut" style="margin-bottom:6px">'+esc(S.err)+'</div><button class="btn" onclick="start()">Coba lagi</button></div>';return;}
   var K=calc(),h='';
   if(PEOPLE[S.who].angka===undefined&&S.tab==='angka')S.tab='home';
+  if(!PEOPLE[S.who].admin&&S.tab==='tugas')S.tab='home';
   if(S.tab==='home')h=vHome(K);else if(S.tab==='papan')h=vPapan(K);else if(S.tab==='checkin')h=vCheckin(K);
-  else if(S.tab==='angka')h=vAngka(K);else if(S.tab==='hambatan')h=vHambatan(K);else if(S.tab==='review')h=vReview(K);
+  else if(S.tab==='tugas')h=vTugas(K);else if(S.tab==='angka')h=vAngka(K);else if(S.tab==='hambatan')h=vHambatan(K);else if(S.tab==='review')h=vReview(K);
   $('view').innerHTML=h;
   if(S.tab==='angka')angkaLive();
 }
@@ -396,6 +400,7 @@ function vHome(K){
   var sub=before?'Periode mulai '+dLabel(PERIOD.start)+'.':'Minggu ke-'+clamp(Math.floor((pd(t)-pd(PERIOD.start))/604800000)+1,1,13)+' dari 13 · berakhir '+dLabel(PERIOD.end);
   h+='<div class="vhead"><div class="mid">Halo, '+esc(S.who)+'</div><div class="sm mut">'+esc(sub)+'</div></div>';
   h+=objStrip(t);
+  h+=mgrBadge(K);
   // hero: kemajuan problem
   h+='<div class="card hero"><div class="h">Kemajuan problem · "Banyak tanya, sedikit yang membeli"</div>';
   if(a){
@@ -630,6 +635,120 @@ function saveHbEdit(id){
 function setHb(id,status){
   var x=(D.hambatan||[]).filter(function(h){return h.id===id;})[0];if(!x)return;
   saveAndReload({action:'hambatan',id:x.id,title:x.title,owner:x.owner,due:x.due,status:status,note:x.note,terlibat:x.terlibat===undefined?undefined:x.terlibat},'Status diperbarui');
+}
+
+// ═════════════ TUGAS MANAGER (hanya Lukman) ═════════════
+var DAY_ID=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+function dAdd(s,n){var d=pd(s);d.setDate(d.getDate()+n);return dstr(d);}
+function dDiff(a,b){return Math.round((pd(a)-pd(b))/86400000);}
+function periodDay(t){return {day:dDiff(t,PERIOD.start)+1,tot:dDiff(PERIOD.end,PERIOD.start)+1};}
+function pendingCheckins(){var out=[];PERAN_ORDER.forEach(function(id){var d=KRS[id];if(!weekDone(d.person,id))out.push({id:id,person:d.person,role:d.role});});return out;}
+// daftar tindakan yang dihitung dari data. lv: bad (mendesak), warn (hari ini/minggu ini), info
+function angkaAnomali(){
+  var rows=(D.angka||[]).slice().sort(function(a,b){return a.asOf<b.asOf?-1:1;}),out=[],F=[['chat','Chat'],['online','Deal Online'],['total','Total'],['iklan','Iklan'],['konten','Konten'],['rujukan','Rujukan'],['lainnya','Lainnya']];
+  for(var i=1;i<rows.length;i++){var a=rows[i-1],b=rows[i];if(a.asOf.slice(0,7)!==b.asOf.slice(0,7))continue;
+    F.forEach(function(f){if(b[f[0]]<a[f[0]])out.push(f[1]+' turun dari '+a[f[0]]+' ('+dLabel(a.asOf)+') ke '+b[f[0]]+' ('+dLabel(b.asOf)+')');});}
+  return out;
+}
+function mgrActions(K){
+  var t=today(),dow=pd(t).getDay(),A=[],c=K.c,a=K.act,wk=weekStart(),pw=dAdd(wk,-7);
+  function add(lv,html,tab,fokus){A.push({lv:lv,html:html,tab:tab,fokus:fokus});}
+  // hambatan
+  var hb=(D.hambatan||[]).filter(function(h){return h.status!=='Selesai';}).sort(function(x,y){return (x.due||'9999')<(y.due||'9999')?-1:1;});
+  hb.forEach(function(h){
+    var iv=hbInv(h),who=esc(h.owner)+(iv.length?' (bersama '+esc(iv.join(', '))+')':''),ttl='<b>'+esc(h.title)+'</b>',fk='Selesaikan hambatan "'+h.title+'" (tenggat '+dLabel(h.due)+')';
+    if(h.due&&h.due<t)add('bad',ttl+' terlambat '+dDiff(t,h.due)+' hari (status '+esc(h.status)+'). Hubungi '+who+' hari ini: apa yang menghalangi, dan minta tenggat baru yang jelas.','hambatan',fk);
+    else if(h.due&&h.due<=dAdd(t,2)){var l=dDiff(h.due,t);add('warn','Tenggat '+(l===0?'<b>hari ini</b>':l===1?'<b>besok</b>':l+' hari lagi')+': '+ttl+' (status '+esc(h.status)+'). Tanyakan ke '+who+' sudah sampai mana.','hambatan',fk);}
+    else{var up=String(h.updated||h.created||'').slice(0,10);if(up&&h.status==='Terbuka'&&dDiff(t,up)>=4)add('warn',ttl+' belum bergerak '+dDiff(t,up)+' hari (masih Terbuka). Tanyakan ke '+who+'.','hambatan',fk);}
+  });
+  if((D.hambatan||[]).length<3)add(t>'2026-11-14'?'bad':'warn','Baru '+(D.hambatan||[]).length+' hambatan tercatat. Target: minimal 3 hambatan prioritas sampai 14 Nov.','hambatan');
+  // angka
+  var an=angkaAnomali();
+  if(an.length)add('bad','Angka tidak kumulatif: '+esc(an.join('; '))+'. Angka harus jumlah sejak tanggal 1. Perbaiki di tab Angka.','angka');
+  var last=(D.angka||[]).reduce(function(m,r){return r.asOf>m?r.asOf:m;},'');
+  if(!last)add('warn','Belum ada angka. Masukkan angka kumulatif sejak tanggal 1.','angka');
+  else if(dow===5&&last<t)add('warn','Jumat: masukkan angka kumulatif hari ini (4 angka dari Tri).','angka');
+  else if(last<dAdd(t,-6))add('warn','Angka terakhir '+dLabel(last)+', lebih dari 7 hari lalu.','angka');
+  // asal pembeli
+  if(a&&a.ym===t.slice(0,7)&&a.total>=20){var att=a.iklan+a.konten+a.rujukan+a.lainnya,sh=att/a.total;
+    if(att>a.total)add('bad','Asal pembeli ('+att+') lebih besar dari total ('+a.total+'). Periksa angka.','angka');
+    else if(sh<0.7)add('warn','Baru '+pc(sh,0)+' pembeli bulan ini tercatat asalnya ('+att+' dari '+a.total+'). Tanyakan ke Tri dan kasir: pertanyaan asal sudah ditanyakan di setiap transaksi?',null,'Tanyakan dan catat asal setiap pembeli');}
+  // check-in
+  var pend=pendingCheckins();
+  if(dow===5||dow===6||dow===0){
+    pend.forEach(function(p){add('warn',p.person===S.who?'Check-in Anda sendiri ('+esc(p.role)+') belum diisi.':'Ingatkan '+esc(p.person)+' lewat chat pribadi: check-in '+esc(p.role)+' belum masuk (batas Minggu malam).','checkin');});
+    add('info','Setelah semua check-in masuk: baca kartu Check-in tim di Papan, pilih <b>satu</b> tindakan untuk minggu depan.','papan');
+  }
+  if(dow>=1&&dow<=3&&pw>='2026-11-02'){
+    var seenP={};PERAN_ORDER.forEach(function(id){var d=KRS[id];if(d.person===S.who||seenP[d.person])return;
+      var ok=(D.checkins||[]).some(function(x){return x.person===d.person&&x.kr===id&&x.week===pw;});
+      if(!ok){seenP[d.person]=1;add('bad',esc(d.person)+' tidak check-in minggu lalu ('+esc(d.role)+'). Bicara langsung hari ini, bukan di grup: tanya apa yang menghalangi.','checkin');}});
+  }
+  PERAN_ORDER.forEach(function(id){var d=KRS[id];if(d.person===S.who)return;
+    var l=(D.checkins||[]).filter(function(x){return x.person===d.person&&x.kr===id;}).sort(function(x,y){return x.week<y.week?1:x.week>y.week?-1:(x.ts<y.ts?1:-1);}),cur=l[0],prev=l[1];
+    if(!cur||cur.week<pw)return;
+    var why=[];if(cur.conf<=5)why.push('keyakinan '+cur.conf+'/10');if(prev&&cur.conf-prev.conf<=-2)why.push('turun '+(prev.conf-cur.conf)+' poin dari minggu sebelumnya');
+    if(why.length)add('warn',esc(d.person)+' ('+esc(d.role)+'): '+why.join(', ')+'. Ajak bicara 4 mata minggu ini: apa yang membuat ragu, dan apa yang bisa Anda singkirkan?','papan');});
+  // target dan review
+  var tg=[c.ads_target,c.konten_target,c.rujukan_target].some(function(v){return v==null;});
+  if(tg&&t>='2026-11-28')add(t>='2026-11-30'?'bad':'warn','Tetapkan target Iklan, Konten, Rujukan di Review → Pengaturan (batas 30 Nov).','review');
+  for(var i=1;i<PERIOD.months.length;i++){var ym=PERIOD.months[i],pm=PERIOD.months[i-1];
+    if(t>=ym+'-01'&&!(D.review||[]).some(function(r){return r.month===pm&&r.text;}))add(+t.slice(8)>7?'bad':'warn','Tulis Catatan evaluasi '+ymLabel(pm)+' di Review.','review');}
+  // peringatan data
+  if(a&&a.ym===t.slice(0,7)&&a.early){add('info','Data bulan ini baru '+a.day+' hari. Proyeksi belum stabil, jangan dipakai menilai orang sebelum hari ke-7.',null);
+    if(K.progress!=null&&K.progress>1.3)add('warn','Skor KR1 sudah '+pc(K.progress,0)+' di minggu pertama. Terlalu bagus untuk dipercaya: cek apakah definisi baseline sama dengan angka harian sekarang (Review → Pengaturan).','review');}
+  var ord={bad:0,warn:1,info:2};A.sort(function(x,y){return ord[x.lv]-ord[y.lv];});
+  return A;
+}
+function waMsgs(K,acts){
+  var t=today(),dow=pd(t).getDay(),pp=periodDay(t),a=K.act,c=K.c,out=[];
+  if(pp.day<1||pp.day>pp.tot)return [{when:'—',text:'Hari ini di luar periode OKR ('+dLabel(PERIOD.start)+' – '+dLabel(PERIOD.end)+'). Tidak ada pesan yang perlu dikirim.',skip:true}];
+  var fk='';acts.forEach(function(x){if(!fk&&x.fokus)fk=x.fokus;});
+  if(!fk)fk='Setiap chat yang masuk dibalas dan ditindaklanjuti sampai deal atau jelas tidak jadi';
+  if(dow>=1&&dow<=5){
+    var L=['Pagi tim. Hari ke-'+pp.day+' dari '+pp.tot+', tinggal '+(pp.tot-pp.day)+' hari.','Objective kita: lebih banyak orang yang bertanya akhirnya membeli.'];
+    if(a&&a.ym===t.slice(0,7)){L.push(a.early?'Deal Online bulan ini sejauh ini: '+n0(a.online)+' (data '+a.day+' hari).':'Deal Online bulan ini: proyeksi '+n0(a.projOnline)+' (patokan bulan ini '+n0(a.msOnline)+', akhir Januari '+n0(c.online_target)+').');}
+    if(dow===1)L.push('Minggu ke-'+clamp(Math.floor(dDiff(t,PERIOD.start)/7)+1,1,13)+' dari 13 dimulai.');
+    L.push('Fokus hari ini: '+fk+'.');
+    out.push({when:'Pagi',text:L.join('\n')});
+  }
+  if(dow===5)out.push({when:'Jumat siang/sore',text:'Pengingat Jumat: check-in di app sekarang (1 menit, batas Minggu malam). Tri, tolong kirim 4 angka ke saya sore ini.'});
+  if((dow===6||dow===0)&&pendingCheckins().length)out.push({when:dow===6?'Sabtu':'Minggu',text:'Pengingat: check-in minggu ini belum lengkap. Batasnya Minggu malam, cukup 1 menit di app.'});
+  if(!out.length)out.push({when:'—',text:'Tidak ada pesan grup yang perlu dikirim hari ini.',skip:true});
+  return out;
+}
+function copyWa(i){
+  var e=$('wa_'+i);if(!e)return;var v=e.value;
+  function fb(){e.focus();e.select();var ok=false;try{ok=document.execCommand('copy');}catch(x){}toast(ok?'Pesan disalin':'Tekan lama lalu salin manual',!ok);}
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(v).then(function(){toast('Pesan disalin');},fb);else fb();
+}
+var MILESTONES=[['2026-11-14','Minimal 3 hambatan prioritas sudah tercatat.'],['2026-11-30','Angka akhir November. Tetapkan target Iklan, Konten, Rujukan di Review → Pengaturan.'],['2026-12-03','Catatan evaluasi November ditulis di Review.'],['2026-12-31','Angka akhir Desember.'],['2027-01-03','Catatan evaluasi Desember ditulis di Review.'],['2027-01-31','Angka akhir Januari. Target: minimal 80% hambatan Selesai.']];
+function mgrBadge(K){
+  if(!PEOPLE[S.who].admin)return '';
+  var A=mgrActions(K),bad=A.filter(function(x){return x.lv==='bad';}).length,n=A.filter(function(x){return x.lv!=='info';}).length;
+  var lnk=' <a href="#" onclick="go(\'tugas\');return false" style="color:inherit;font-weight:800">Buka Tugas Manager</a>';
+  return n?note('<b>'+n+' hal</b> perlu Anda tindak hari ini'+(bad?' ('+bad+' mendesak)':'')+'.'+lnk,bad?'bad':'warn'):note('Tidak ada yang mendesak hari ini. Pesan grup dan rutinitas ada di Tugas Manager.'+lnk,'ok');
+}
+function vTugas(K){
+  var t=today(),dow=pd(t).getDay(),pp=periodDay(t),A=mgrActions(K),M=waMsgs(K,A),h='';
+  h+='<div class="vhead"><div class="mid">Tugas Manager</div><div class="sm mut">'+DAY_ID[dow]+' '+dLabel(t)+(pp.day>=1&&pp.day<=pp.tot?' · Hari ke-'+pp.day+' dari '+pp.tot:'')+'. Tugas Anda: menjaga semua orang memikirkan hal yang sama sampai 31 Jan.</div></div>';
+  h+='<div class="card g"><div class="h">1 · Kirim ke grup WA Marketing</div><div class="sm mut" style="margin-bottom:8px">Isi sudah dihitung dari data. Boleh diedit sebelum disalin. Grup hanya untuk tujuan, fokus, dan pengingat umum. Nama orang yang tertinggal tidak ditulis di grup.</div>'+
+    M.map(function(m,i){return '<div class="hb"><div class="kr-r">'+esc(m.when)+'</div>'+(m.skip?'<div class="sm mut">'+esc(m.text)+'</div>':'<textarea class="ta" id="wa_'+i+'" rows="7" style="margin:6px 0 8px">'+esc(m.text)+'</textarea><button class="btn" style="margin:0" onclick="copyWa('+i+')">Salin pesan</button>')+'</div>';}).join('')+'</div>';
+  h+='<div class="card g"><div class="h">2 · Yang perlu Anda tindak hari ini</div>'+(A.length?A.map(function(x){
+    return '<div class="hb"><div class="row"><div class="sm">'+x.html+'</div><span class="tag sp '+(x.lv==='bad'?'bad':x.lv==='warn'?'warn':'na')+'">'+(x.lv==='bad'?'Mendesak':x.lv==='warn'?'Hari ini':'Info')+'</span></div>'+(x.tab?'<a href="#" class="sm" style="font-weight:800;color:var(--m-d)" onclick="go(\''+x.tab+'\');return false">Buka →</a>':'')+'</div>';}).join(''):'<div class="sm mut">Tidak ada yang mendesak. Kerjakan rutinitas harian di bawah.</div>')+'</div>';
+  h+='<div class="card g"><div class="h">3 · Kapan bicara langsung (bukan di grup)</div><div class="sm mut" style="margin-bottom:8px">Ambang di bawah ini usulan, bukan kebijakan. Ubah sesuai cara Anda memimpin.</div><table><tr><th>Pemicu</th><th>Tindakan</th></tr>'+
+    '<tr><td>Check-in belum masuk sampai Minggu malam (pertama kali)</td><td>Chat pribadi Senin pagi, ingatkan.</td></tr>'+
+    '<tr><td>Tidak check-in 2 minggu berturut-turut</td><td>Bicara langsung: apa yang menghalangi?</td></tr>'+
+    '<tr><td>Hambatan lewat tenggat tanpa kabar</td><td>Hubungi di hari lewat tenggat. Minta tenggat baru yang jelas.</td></tr>'+
+    '<tr><td>Keyakinan 5 ke bawah, atau turun 2 poin</td><td>Ajak bicara 4 mata minggu itu. Tanyakan apa yang bisa Anda singkirkan.</td></tr>'+
+    '<tr><td>Asal pembeli tercatat di bawah 70% dua Jumat berturut-turut</td><td>Bicara dengan Tri dan kasir. Cari penyebabnya: lupa, tidak sempat, atau tidak tahu cara mencatat.</td></tr>'+
+    '<tr><td>4 angka Jumat tidak dikirim</td><td>Hubungi Jumat malam atau Sabtu.</td></tr></table>'+
+    '<div class="sm" style="margin-top:10px"><b>Cara menegur:</b> satu orang, satu hal, ada batas waktu. Mulai dengan "apa yang menghalangi?" sebelum menyimpulkan.</div></div>';
+  var up=MILESTONES.filter(function(m){return m[0]>=t;}).slice(0,3);
+  h+='<div class="card g"><div class="h">4 · Rutinitas dan tanggal penting</div><div class="sm"><b>Tiap hari:</b> buka Beranda, kirim Pesan Pagi, cek Hambatan, baca 5 chat masuk, tanya satu orang: "hari ini apa yang kamu kerjakan supaya lebih banyak chat jadi pembelian?"</div>'+
+    '<div class="sm" style="margin-top:6px"><b>Tiap Jumat:</b> masukkan 4 angka dari Tri, baca Check-in tim di Papan, pilih satu tindakan.</div>'+
+    '<div class="sm" style="margin:12px 0 4px"><b>Tanggal penting berikutnya</b></div>'+(up.length?up.map(function(m){var l=dDiff(m[0],t);return '<div class="sm" style="margin-top:4px"><b>'+dLabel(m[0])+'</b> ('+(l===0?'hari ini':l+' hari lagi')+'): '+esc(m[1])+'</div>';}).join(''):'<div class="sm mut">Semua tanggal penting sudah lewat.</div>')+'</div>';
+  return h;
 }
 
 // ═════════════ REVIEW + PENGATURAN ═════════════
