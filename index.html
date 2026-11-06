@@ -65,6 +65,8 @@ tr.cur td{background:var(--m-l);font-weight:700}
 .lbl:first-child{margin-top:0}
 .inp,.sel,.ta{width:100%;border:1.5px solid var(--bdr);border-radius:13px;background:var(--card2);padding:0 14px;font-size:14px;font-weight:600;color:var(--txt);outline:none}
 .inp,.sel{height:46px}
+.ta.big{min-height:140px;max-height:480px;overflow:auto}
+.cnt{font-size:11.5px;color:var(--mut);text-align:right;margin:4px 2px 12px}.cnt.near{color:var(--warn);font-weight:700}.cnt.full{color:var(--bad);font-weight:700}
 .ta{padding:12px 14px;min-height:78px;resize:vertical;font-weight:500;line-height:1.5}
 .inp:focus,.sel:focus,.ta:focus{border-color:var(--m);background:#fff}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -373,6 +375,7 @@ function render(){
   if(S.tab==='home')h=vHome(K);else if(S.tab==='papan')h=vPapan(K);else if(S.tab==='checkin')h=vCheckin(K);
   else if(S.tab==='tugas')h=vTugas(K);else if(S.tab==='angka')h=vAngka(K);else if(S.tab==='hambatan')h=vHambatan(K);else if(S.tab==='review')h=vReview(K);
   $('view').innerHTML=h;
+  var tas=document.querySelectorAll('#view textarea[data-max]');for(var ti=0;ti<tas.length;ti++)taFit(tas[ti]);
   if(S.tab==='angka')angkaLive();
 }
 
@@ -564,19 +567,39 @@ function vCheckin(K){
   var o=krInfo(k,K);
   h+='<div class="card"><div class="kr-r">'+esc(KRS[k].role)+'</div><div class="fungsi"><b>Fungsi:</b> '+esc(peranOf(k))+'</div><div class="kr-t">'+esc(KRS[k].title)+'</div><div class="sm mut" style="margin-top:6px">Sekarang: <b>'+esc(o.big)+'</b></div></div>';
   if(ex)h+=note('Sudah diisi minggu ini. Menyimpan lagi akan <b>menimpa</b> isian sebelumnya.','ok');
-  var cv=ex?ex.conf:7;
+  var dr=ciDraftGet(k,w),cv=dr?dr.c:(ex?ex.conf:7);
+  if(dr)h+=note('Draf yang belum disimpan dipulihkan dari HP ini. Tekan <b>Simpan check-in</b> untuk mengirim.','warn');
   h+='<div class="card g"><label class="lbl">Seberapa yakin KR ini tercapai? (1 = hampir pasti gagal, 10 = pasti tercapai)</label>'+
-    '<div class="conf" id="confv">'+cv+'</div><input type="range" id="conf" min="1" max="10" step="1" value="'+cv+'" oninput="$(\'confv\').textContent=this.value">'+
-    '<label class="lbl">Hambatan terbesar minggu ini (kosongkan kalau tidak ada)</label><textarea class="ta" id="blocker" maxlength="500">'+esc(ex?ex.blocker:'')+'</textarea>'+
-    '<label class="lbl">Yang akan dikerjakan minggu depan</label><textarea class="ta" id="plan" maxlength="500">'+esc(ex?ex.plan:'')+'</textarea>'+
+    '<div class="conf" id="confv">'+cv+'</div><input type="range" id="conf" min="1" max="10" step="1" value="'+cv+'" oninput="$(\'confv\').textContent=this.value;ciDraft()">'+
+    '<label class="lbl">Hambatan terbesar minggu ini (kosongkan kalau tidak ada)</label>'+taBox('blocker',LIM_CI,dr?dr.b:(ex?ex.blocker:''),'ciDraft')+
+    '<label class="lbl">Yang akan dikerjakan minggu depan</label>'+taBox('plan',LIM_CI,dr?dr.p:(ex?ex.plan:''),'ciDraft')+
     '<button class="btn" id="cksave" onclick="saveCheckin()">Simpan check-in</button></div>';
   var hist=(D.checkins||[]).filter(function(c){return c.person===S.who&&c.kr===k;}).sort(function(a,b){return a.week<b.week?1:-1;}).slice(0,4);
   if(hist.length)h+='<div class="card g"><div class="h">Check-in sebelumnya</div>'+hist.map(function(c){return '<div class="hb"><div class="row"><b class="sm">'+dLabel(c.week)+'</b><span class="sp tag na">Yakin '+c.conf+'/10</span></div>'+(c.blocker?'<div class="sm" style="margin-top:6px"><b>Hambatan:</b> '+esc(c.blocker)+'</div>':'')+(c.plan?'<div class="sm"><b>Rencana:</b> '+esc(c.plan)+'</div>':'')+'</div>';}).join('')+'</div>';
   return h;
 }
+// kotak teks panjang: penghitung karakter, tinggi menyesuaikan isi
+var LIM_CI=2000,LIM_NOTE=2000,LIM_RV=3000;
+function taBox(id,max,val,onin){return '<textarea class="ta big" id="'+id+'" maxlength="'+max+'" data-max="'+max+'" oninput="taFit(this);'+(onin?onin+'()':'')+'">'+esc(val||'')+'</textarea><div class="cnt" id="'+id+'_cnt"></div>';}
+function taFit(e){
+  e.style.height='auto';e.style.height=Math.min(e.scrollHeight+2,480)+'px';
+  var c=$(e.id+'_cnt'),m=+e.getAttribute('data-max'),n=e.value.length;
+  if(c){c.textContent=n0(n)+' / '+n0(m)+' karakter';c.className='cnt'+(n>=m?' full':n>=m*0.9?' near':'');}
+}
+// draf check-in disimpan di HP ini (hanya kemudahan, bukan penyimpanan resmi)
+function ciKey(k,w){return 'okr_draft_ci_'+S.who+'_'+k+'_'+w;}
+function ciDraftGet(k,w){try{var v=localStorage.getItem(ciKey(k,w));return v?JSON.parse(v):null;}catch(e){return null;}}
+function ciDraft(){try{var b=$('blocker'),p=$('plan'),c=$('conf');if(!b||!p||!c)return;localStorage.setItem(ciKey(S.krSel,weekStart()),JSON.stringify({b:b.value,p:p.value,c:+c.value}));}catch(e){}}
+function ciDraftClear(k,w){try{localStorage.removeItem(ciKey(k,w));}catch(e){}}
 function saveCheckin(){
   var k=S.krSel,w=weekStart(),b=$('cksave');b.disabled=true;
-  saveAndReload({action:'checkin',id:S.who+'_'+k+'_'+w,week:w,person:S.who,kr:k,conf:+$('conf').value,blocker:$('blocker').value.trim(),plan:$('plan').value.trim()},'Check-in tersimpan').then(function(ok){if(!ok){var e=$('cksave');if(e)e.disabled=false;}});
+  var p={action:'checkin',id:S.who+'_'+k+'_'+w,week:w,person:S.who,kr:k,conf:+$('conf').value,blocker:$('blocker').value.trim(),plan:$('plan').value.trim()};
+  saveAndReload(p,'Check-in tersimpan').then(function(ok){
+    if(!ok){var e=$('cksave');if(e)e.disabled=false;return;}
+    ciDraftClear(k,w);
+    var x=(D.checkins||[]).filter(function(c){return c.person===S.who&&c.kr===k&&c.week===w;})[0];
+    if(x&&(x.blocker!==p.blocker||x.plan!==p.plan))toast('Teks TERPOTONG di server (batas lama). Deploy ulang Apps Script terbaru lalu isi lagi.',true);
+  });
 }
 
 // ═════════════ ANGKA BULANAN ═════════════
@@ -636,6 +659,7 @@ function hbRead(pre,owner){return Object.keys(PEOPLE).filter(function(n){var e=$
 function ownerSel(id,cur){return '<select class="sel" id="'+id+'">'+Object.keys(PEOPLE).map(function(n){return '<option'+(n===cur?' selected':'')+'>'+n+'</option>';}).join('')+'</select>';}
 function hbSave(p,okMsg){
   return saveAndReload(p,okMsg).then(function(ok){
+    if(ok){var y=(D.hambatan||[]).filter(function(h){return h.id===p.id;})[0];if(y&&p.note&&y.note!==p.note)toast('Catatan TERPOTONG di server (batas lama). Deploy ulang Apps Script terbaru.',true);}
     if(ok&&p.terlibat){var x=(D.hambatan||[]).filter(function(h){return h.id===p.id;})[0];
       if(x&&x.terlibat===undefined)toast('Terlibat TIDAK tersimpan: Apps Script belum diperbarui. Deploy ulang kode terbaru dulu.',true);}
     return ok;});
@@ -649,13 +673,13 @@ function vHambatan(K){
     '<div class="grid2"><div><label class="lbl">Pemilik (1 orang, yang menjawab selesai atau belum)</label>'+ownerSel('hb_owner',S.who)+'</div>'+
     '<div><label class="lbl">Tenggat</label><input class="inp" type="date" id="hb_due"></div></div>'+
     '<label class="lbl">Terlibat (opsional, ikut melihat pengingat di Beranda)</label>'+hbChecks('hb',[])+
-    '<label class="lbl">Catatan: siapa mengerjakan apa (opsional)</label><textarea class="ta" id="hb_note" maxlength="500" placeholder="mis. Faizal: script + SOP. Tri: eksekusi."></textarea>'+
+    '<label class="lbl">Catatan: siapa mengerjakan apa (opsional)</label>'+taBox('hb_note',LIM_NOTE,'')+
     '<button class="btn" id="hb_save" onclick="addHambatan()">Simpan hambatan</button></div>';
   h+='<div class="card">'+(hb.length?hb.map(function(x){
     if(adm&&S.hbEdit===x.id)return '<div class="hb"><label class="lbl">Hambatan</label><input class="inp" id="he_title" maxlength="120" value="'+esc(x.title)+'">'+
       '<div class="grid2"><div><label class="lbl">Pemilik</label>'+ownerSel('he_owner',x.owner)+'</div><div><label class="lbl">Tenggat</label><input class="inp" type="date" id="he_due" value="'+esc(x.due)+'"></div></div>'+
       '<label class="lbl">Terlibat</label>'+hbChecks('he',hbInv(x))+
-      '<label class="lbl">Catatan: siapa mengerjakan apa</label><textarea class="ta" id="he_note" maxlength="500">'+esc(x.note)+'</textarea>'+
+      '<label class="lbl">Catatan: siapa mengerjakan apa</label>'+taBox('he_note',LIM_NOTE,x.note)+
       '<div class="row" style="gap:8px"><button class="btn" id="he_save" onclick="saveHbEdit(\''+esc(x.id)+'\')">Simpan</button><button class="btn ghost" onclick="S.hbEdit=null;render()">Batal</button></div></div>';
     return '<div class="hb"><div class="row"><div class="kr-t">'+esc(x.title)+'</div><span class="tag sp '+(x.status==='Selesai'?'ok':x.status==='Dikerjakan'?'warn':'bad')+'">'+esc(x.status)+'</span></div>'+
       '<div class="sm mut" style="margin:4px 0 8px">'+hbWho(x)+' · tenggat '+dLabel(x.due)+(x.status!=='Selesai'&&x.due&&x.due<t?' <b style="color:var(--bad)">terlambat</b>':'')+'</div>'+(x.note?'<div class="sm" style="margin:0 0 8px">'+esc(x.note)+'</div>':'')+
@@ -805,7 +829,7 @@ function vReview(K){
   if(!S.reviewMonth||ms.indexOf(S.reviewMonth)<0)S.reviewMonth=ms[ms.length-1]||PERIOD.months[0];
   var cur=(D.review||[]).filter(function(r){return r.month===S.reviewMonth;})[0];
   h+='<div class="card g"><div class="h">Catatan evaluasi</div><div class="chips">'+PERIOD.months.map(function(m){return '<button class="chip '+(m===S.reviewMonth?'on':'')+'" onclick="S.reviewMonth=\''+m+'\';render()">'+esc(ymShort(m))+'</button>';}).join('')+'</div>';
-  if(P.admin)h+='<textarea class="ta" id="rv_text" maxlength="1000" placeholder="Apa yang berhasil, apa yang gagal, apa yang diubah bulan depan?">'+esc(cur?cur.text:'')+'</textarea><button class="btn" id="rv_save" onclick="saveReview()">Simpan catatan</button>';
+  if(P.admin)h+=''+taBox('rv_text',LIM_RV,cur?cur.text:'')+'<button class="btn" id="rv_save" onclick="saveReview()">Simpan catatan</button>';
   else h+='<div class="sm" style="white-space:pre-wrap">'+(cur&&cur.text?esc(cur.text):'<span class="mut">Belum ada catatan. Hanya Lukman yang menulis catatan evaluasi.</span>')+'</div>';
   h+='</div>';
   if(P.admin){
