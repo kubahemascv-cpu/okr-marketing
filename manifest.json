@@ -1,7 +1,7 @@
 {
   "name": "OKR Kubah Emas",
   "short_name": "OKR Kubah Emas",
-  "description": "OKR tim marketing Kubah Emas: check-in mingguan, angka bulanan, hambatan, review",
+  "description": "OKR tim marketing Kubah Emas: Beranda, check-in mingguan, hambatan",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
