@@ -162,11 +162,11 @@ details.card summary{font-size:13px;font-weight:800;cursor:pointer}
 // ═════════════ KONFIGURASI ═════════════
 var APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbzMAsn2ClE8-Roz1UY5lkM7hHqw5T5ulNGOL0v0ybLIZhWHelUeoiFGjmYEHAILi52b/exec';
 var PIN='1601';
-var APP_VER='v21';
-var NEED_SCRIPT=6;   // versi Apps Script yang dibutuhkan app ini
+var APP_VER='v22';
+var NEED_SCRIPT=7;   // versi Apps Script yang dibutuhkan app ini
 // App Brand Creator: sumber angka Dicky (dibaca langsung, tidak diketik ulang di sini)
 var BC_URL='https://script.google.com/macros/s/AKfycbx7fvep5uCT_s_RUYbbcv4liCG0jRq5z53kzmz9BaL3QDTw2dI2PfZGo00UHhHnIPu0/exec';
-var BC_KATS=['Awareness Online','Awareness Offline','Iklan Penjualan'],BC_DIVISI=['Kubah Emas','Kumasindo'],BC_WK='__winner__';
+var BC_KATS=['Awareness Online','Awareness Offline','Iklan Penjualan'],BC_DIV='Kubah Emas',BC_WK='__winner__';   // OKR ini khusus Toko Kubah Emas: Kumasindo tidak dihitung
 var PERIOD={start:'2026-11-01',end:'2027-01-31',months:['2026-11','2026-12','2027-01']};
 var OBJ_TEXT='Lebih banyak calon pembeli yang masuk ke Kubah Emas akhirnya membeli.';
 var MONTH_ID=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
@@ -185,12 +185,12 @@ var ROLE_ROWS={
 };
 // KR1 dan KR2 memakai Jumlah Nota & Total Traffic. chat_base/online_base/online_target hanya untuk indikator Online Chat Conversion Rate (CS), bukan KR.
 // conv_target disimpan dalam persen (35 = 35%). nota_* menggantikan total_* (nilai lama dipakai kalau nota_* belum pernah diisi).
-var DEFAULTS={traffic_base:null,nota_base:441,conv_target:null,nota_target:513,chat_base:1800,online_base:110,online_target:144,t_traffic_baru:null,t_vtr:null,t_rujukan:null};
+var DEFAULTS={traffic_base:null,nota_base:441,conv_target:null,nota_target:513,chat_base:1800,online_base:110,online_target:144,t_traffic_baru:null,t_vtr:null,t_winner_toko:null,t_rujukan:null};
 var LEGACY_KEY={nota_base:'total_base',nota_target:'total_target'};
 var CFG_LOCK=[['traffic_base','Total Traffic per bulan — Patokan Awal'],['nota_base','Jumlah Nota per bulan — Patokan Awal'],
   ['conv_target','Target Traffic to Conversion Rate — Akhir Periode (%)'],['nota_target','Target Jumlah Nota per bulan — Akhir Periode']];
 var CFG_ONLINE=[['chat_base','Chat masuk per bulan — patokan awal'],['online_base','Deal Online per bulan — patokan awal'],['online_target','Target Deal Online — akhir Januari']];
-var CFG_TARGET=[['t_traffic_baru','Advertiser: Traffic Baru (Chat New Leads) per bulan'],['t_vtr','Advertiser: target Valid Traffic Rate (%)'],['t_rujukan','Pembelian dari rujukan Kumasindo per bulan']];
+var CFG_TARGET=[['t_traffic_baru','Advertiser: Traffic Baru (Chat New Leads) per bulan'],['t_vtr','Advertiser: target Valid Traffic Rate (%)'],['t_winner_toko','Brand Creator: target Winner per bulan, Toko Kubah Emas saja'],['t_rujukan','Pembelian dari rujukan Kumasindo per bulan']];
 var CFG_FIELDS=CFG_LOCK.concat(CFG_ONLINE,CFG_TARGET);
 
 // ═════════════ UTIL ═════════════
@@ -217,7 +217,7 @@ function toast(msg,bad){var t=document.createElement('div');t.className='toast'+
 // ═════════════ API ═════════════
 function apiReady(){return APPS_SCRIPT_URL&&APPS_SCRIPT_URL.indexOf('PASTE_')!==0;}
 function scriptOld(){return S.loaded&&D.v!==NEED_SCRIPT;}
-var OLD_MSG='Apps Script belum diperbarui ke versi 6. Deploy ulang dulu (Deploy > Manage deployments > pensil > Version: New).';
+var OLD_MSG='Apps Script belum diperbarui ke versi 7. Deploy ulang dulu (Deploy > Manage deployments > pensil > Version: New).';
 function bcLoad(){
   // kegagalan Brand Creator tidak boleh menjatuhkan seluruh app: hanya baris Dicky yang kosong
   return fetch(BC_URL+'?action=load&cb='+Date.now()).then(function(r){return r.json();}).then(function(j){
@@ -329,15 +329,16 @@ function bcMonth(){
   var tay=function(cid){return (B.tayang||[]).filter(function(t){return t.cid===cid;});};
   var first=function(c){var best='';tay(c.id).forEach(function(t){if(t.mulai<=td&&(!best||t.mulai<best))best=t.mulai;});return best;};
   var isWin=function(c){var k=(B.keputusan||[]).filter(function(x){return x.cid===c.id;})[0];return !!k&&k.status==='WINNER';};
-  var cr=B.creatives||[];
+  // hanya divisi Toko Kubah Emas; creative Kumasindo tidak ikut dihitung
+  var cr=(B.creatives||[]).filter(function(c){return c.divisi===BC_DIV;});
   var made=cr.filter(function(c){return (c.created||'').slice(0,7)===m;}).length;
   var tested=cr.filter(function(c){return c.kategori!=='Awareness Offline'&&first(c).slice(0,7)===m;});
-  var gt=0,hasT=false;
-  BC_KATS.forEach(function(k){BC_DIVISI.forEach(function(d){var r=(B.targets||[]).filter(function(x){return x.bulan===m&&x.kategori===k&&x.divisi===d;})[0];gt+=r?r.jumlah:0;});});
-  hasT=(B.targets||[]).some(function(x){return x.bulan===m&&x.kategori!==BC_WK;})&&gt>0;
-  var wr=(B.targets||[]).filter(function(x){return x.bulan===m&&x.kategori===BC_WK;})[0];
+  var gt=0;
+  BC_KATS.forEach(function(k){var r=(B.targets||[]).filter(function(x){return x.bulan===m&&x.kategori===k&&x.divisi===BC_DIV;})[0];gt+=r?r.jumlah:0;});
+  // target Winner di Brand Creator satu angka untuk semua divisi (tidak bisa dipisah), jadi tidak dipakai. Target Winner Toko diisi di Pengaturan OKR.
+  var tw=cfg().t_winner_toko;
   var day=+td.slice(8),dm=dim(m);
-  return {m:m,made:made,tested:tested.length,win:tested.filter(isWin).length,gt:hasT?gt:null,tw:wr?wr.jumlah:null,day:day,dim:dm,p:td.slice(0,7)>m?1:day/dm};
+  return {m:m,made:made,tested:tested.length,win:tested.filter(isWin).length,gt:gt>0?gt:null,tw:tw,day:day,dim:dm,p:td.slice(0,7)>m?1:day/dm};
 }
 function bcContrib(){
   var b=bcMonth();
@@ -353,9 +354,9 @@ function bcContrib(){
     if(b.tw>0){B=b.win/(b.tw*b.p);rC.tgtTxt=n0(b.tw);rC.st=b.win>=b.tw?'TERCAPAI':B>=1?'ON TRACK':B>=0.5?'WASPADA':'TERTINGGAL';rC.prog=clamp(b.win/b.tw,0,1);}
     else rC.st='TERCAPAI';
   }
-  var miss=[];if(!b.gt)miss.push('target creative');if(b.tw==null)miss.push('target Winner');
+  var miss=[];if(!b.gt)miss.push('target creative Kubah Emas (di Brand Creator)');if(b.tw==null)miss.push('target Winner Toko (di Pengaturan OKR)');
   return {rows:[rA,rB,rC],st:miss.length?null:worst([rA.st,rC.st]),
-    note:'Sumber: app Brand Creator, '+MONTH_ID[+b.m.slice(5)-1]+' '+b.m.slice(0,4)+(b.day<b.dim?' (hari ke-'+b.day+' dari '+b.dim+')':'')+'.'+(miss.length?' Belum diisi di Brand Creator: '+miss.join(' dan ')+'.':'')};
+    note:'Sumber: app Brand Creator, hanya Toko Kubah Emas (tanpa Kumasindo), '+MONTH_ID[+b.m.slice(5)-1]+' '+b.m.slice(0,4)+(b.day<b.dim?' (hari ke-'+b.day+' dari '+b.dim+')':'')+'.'+(miss.length?' Belum diisi: '+miss.join(' dan ')+'.':'')};
 }
 // Advertiser: dinilai dari jumlah traffic BARU (Chat New Leads) dan seberapa valid traffic itu. Bukan dari transaksi, bukan dari asal pembeli.
 // Valid Traffic = Chat New Leads − (Leads Luar Area + Leads Luar Produk + Spam). Valid Traffic Rate = Valid Traffic ÷ Chat New Leads.
@@ -674,10 +675,10 @@ function vSetelan(K){
     '<div class="cfg-grid">'+CFG_ONLINE.map(function(f){return inp(f[0],true);}).join('')+'</div>'+
     '<div class="sm" style="margin-top:12px">Online Chat Conversion Rate: patokan <b>'+pc(K.oBase)+'</b> → target <b>'+pc(K.oTarget)+'</b>.</div>'+
     '<button class="btn ghost" id="cf_unlock" style="margin-top:12px" onclick="unlockCfg()">Buka kunci untuk mengubah</button>'+
-    '<div class="grp"><span class="tag warn">ISI</span> <b>Target kontribusi per orang, per bulan</b></div><div class="sm mut">Target Brand Creator tidak diisi di sini. Kosongkan kalau belum ada: baris tanpa target tampil tanpa status.</div>'+
+    '<div class="grp"><span class="tag warn">ISI</span> <b>Target kontribusi per orang, per bulan</b></div><div class="sm mut">Target creative Brand Creator tidak diisi di sini. Kosongkan kalau belum ada: baris tanpa target tampil tanpa status.</div>'+
     '<div class="cfg-grid">'+CFG_TARGET.map(function(f){return inp(f[0],false);}).join('')+'</div>'+
     '<button class="btn" id="cf_save" style="margin-top:18px" onclick="saveCfg()">Simpan target</button></div>';
-  var b=bcMonth();h+='<div class="card g"><div class="h">Sambungan Brand Creator</div><div class="sm">'+(b?'<b style="color:var(--ok)">Tersambung.</b> Bulan '+esc(b.m)+': '+n0(b.made)+' creative dibuat, '+n0(b.tested)+' diuji, '+n0(b.win)+' winner.':'<b style="color:var(--bad)">Tidak tersambung.</b> '+esc(S.bcErr||'Belum dimuat.'))+'</div><div class="sm mut" style="margin-top:4px">Target creative dan Winner diisi di tab Manager app Brand Creator, bukan di sini.</div></div>';
+  var b=bcMonth();h+='<div class="card g"><div class="h">Sambungan Brand Creator</div><div class="sm">'+(b?'<b style="color:var(--ok)">Tersambung.</b> Toko Kubah Emas, bulan '+esc(b.m)+': '+n0(b.made)+' creative dibuat, '+n0(b.tested)+' diuji, '+n0(b.win)+' winner.':'<b style="color:var(--bad)">Tidak tersambung.</b> '+esc(S.bcErr||'Belum dimuat.'))+'</div><div class="sm mut" style="margin-top:4px">Hanya divisi Toko Kubah Emas yang dihitung. Target creative diambil dari tab Manager Brand Creator (baris Kubah Emas). Target Winner Brand Creator berlaku gabungan dengan Kumasindo, jadi target Winner Toko diisi di bawah.</div></div>';
   h+='<div class="sm mut" style="text-align:center;margin:6px 0 14px">Versi app: '+APP_VER+' · Apps Script: v'+(D.v||'?')+'</div>';
   return h;
 }
