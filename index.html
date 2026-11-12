@@ -162,8 +162,8 @@ details.card summary{font-size:13px;font-weight:800;cursor:pointer}
 // ═════════════ KONFIGURASI ═════════════
 var APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbzMAsn2ClE8-Roz1UY5lkM7hHqw5T5ulNGOL0v0ybLIZhWHelUeoiFGjmYEHAILi52b/exec';
 var PIN='1601';
-var APP_VER='v20';
-var NEED_SCRIPT=5;   // versi Apps Script yang dibutuhkan app ini
+var APP_VER='v21';
+var NEED_SCRIPT=6;   // versi Apps Script yang dibutuhkan app ini
 // App Brand Creator: sumber angka Dicky (dibaca langsung, tidak diketik ulang di sini)
 var BC_URL='https://script.google.com/macros/s/AKfycbx7fvep5uCT_s_RUYbbcv4liCG0jRq5z53kzmz9BaL3QDTw2dI2PfZGo00UHhHnIPu0/exec';
 var BC_KATS=['Awareness Online','Awareness Offline','Iklan Penjualan'],BC_DIVISI=['Kubah Emas','Kumasindo'],BC_WK='__winner__';
@@ -185,12 +185,12 @@ var ROLE_ROWS={
 };
 // KR1 dan KR2 memakai Jumlah Nota & Total Traffic. chat_base/online_base/online_target hanya untuk indikator Online Chat Conversion Rate (CS), bukan KR.
 // conv_target disimpan dalam persen (35 = 35%). nota_* menggantikan total_* (nilai lama dipakai kalau nota_* belum pernah diisi).
-var DEFAULTS={traffic_base:null,nota_base:441,conv_target:null,nota_target:513,chat_base:1800,online_base:110,online_target:144,t_traffic_iklan:null,t_qtr:null,t_rujukan:null};
+var DEFAULTS={traffic_base:null,nota_base:441,conv_target:null,nota_target:513,chat_base:1800,online_base:110,online_target:144,t_traffic_baru:null,t_vtr:null,t_rujukan:null};
 var LEGACY_KEY={nota_base:'total_base',nota_target:'total_target'};
 var CFG_LOCK=[['traffic_base','Total Traffic per bulan — Patokan Awal'],['nota_base','Jumlah Nota per bulan — Patokan Awal'],
   ['conv_target','Target Traffic to Conversion Rate — Akhir Periode (%)'],['nota_target','Target Jumlah Nota per bulan — Akhir Periode']];
 var CFG_ONLINE=[['chat_base','Chat masuk per bulan — patokan awal'],['online_base','Deal Online per bulan — patokan awal'],['online_target','Target Deal Online — akhir Januari']];
-var CFG_TARGET=[['t_traffic_iklan','Advertiser: Traffic dari Iklan per bulan'],['t_qtr','Advertiser: target Qualified Traffic Rate (%)'],['t_rujukan','Pembelian dari rujukan Kumasindo per bulan']];
+var CFG_TARGET=[['t_traffic_baru','Advertiser: Traffic Baru (Chat New Leads) per bulan'],['t_vtr','Advertiser: target Valid Traffic Rate (%)'],['t_rujukan','Pembelian dari rujukan Kumasindo per bulan']];
 var CFG_FIELDS=CFG_LOCK.concat(CFG_ONLINE,CFG_TARGET);
 
 // ═════════════ UTIL ═════════════
@@ -217,7 +217,7 @@ function toast(msg,bad){var t=document.createElement('div');t.className='toast'+
 // ═════════════ API ═════════════
 function apiReady(){return APPS_SCRIPT_URL&&APPS_SCRIPT_URL.indexOf('PASTE_')!==0;}
 function scriptOld(){return S.loaded&&D.v!==NEED_SCRIPT;}
-var OLD_MSG='Apps Script belum diperbarui ke versi 5. Deploy ulang dulu (Deploy > Manage deployments > pensil > Version: New).';
+var OLD_MSG='Apps Script belum diperbarui ke versi 6. Deploy ulang dulu (Deploy > Manage deployments > pensil > Version: New).';
 function bcLoad(){
   // kegagalan Brand Creator tidak boleh menjatuhkan seluruh app: hanya baris Dicky yang kosong
   return fetch(BC_URL+'?action=load&cb='+Date.now()).then(function(r){return r.json();}).then(function(j){
@@ -281,7 +281,7 @@ function calc(){
       var day=+r.asOf.slice(8),d=dim(ym),running=day<d;
       m.asOf=r.asOf;m.day=day;m.dim=d;m.running=running;m.early=running&&day<7;m.k=running?d/day:1;
       ['chat','online','total','iklan','konten','rujukan','lainnya'].forEach(function(k){m[k]=r[k]||0;});
-      m.chatNew=r.chatNew;m.chatEx=r.chatEx;m.offTraffic=r.offTraffic;m.adTraffic=r.adTraffic;m.adQual=r.adQual;   // null = baris lama sebelum Total Traffic dipakai
+      m.chatNew=r.chatNew;m.chatEx=r.chatEx;m.offTraffic=r.offTraffic;m.luarArea=r.luarArea;m.luarProduk=r.luarProduk;m.spam=r.spam;   // null = baris lama sebelum Total Traffic dipakai
       m.traffic=(r.chatNew==null||r.chatEx==null||r.offTraffic==null)?null:r.chatNew+r.chatEx+r.offTraffic;
       m.projTotal=r.total*m.k;
       m.conv=m.traffic>0?r.total/m.traffic:null;       // KR1
@@ -357,24 +357,28 @@ function bcContrib(){
   return {rows:[rA,rB,rC],st:miss.length?null:worst([rA.st,rC.st]),
     note:'Sumber: app Brand Creator, '+MONTH_ID[+b.m.slice(5)-1]+' '+b.m.slice(0,4)+(b.day<b.dim?' (hari ke-'+b.day+' dari '+b.dim+')':'')+'.'+(miss.length?' Belum diisi di Brand Creator: '+miss.join(' dan ')+'.':'')};
 }
-// Advertiser: dinilai dari jumlah dan kualitas traffic yang dibawa iklan, BUKAN dari transaksi.
-// Qualified Traffic = sesuai area layanan + sesuai produk + punya kebutuhan beli nyata. Pembelian dari iklan hanya informasi.
+// Advertiser: dinilai dari jumlah traffic BARU (Chat New Leads) dan seberapa valid traffic itu. Bukan dari transaksi, bukan dari asal pembeli.
+// Valid Traffic = Chat New Leads − (Leads Luar Area + Leads Luar Produk + Spam). Valid Traffic Rate = Valid Traffic ÷ Chat New Leads.
 function adsContrib(K){
   var a=K.act,c=K.c,sts=[],miss=[];
-  var rT={lbl:'Traffic dari Iklan',txt:'—'},rQ={lbl:'Qualified Traffic Rate',txt:'—'},rP={lbl:'Pembelian dari iklan',txt:'—',sub:'informasi saja, tidak menentukan status'};
-  var out={rows:[rT,rQ,rP],st:null,note:'Advertiser dinilai dari jumlah dan kualitas traffic, bukan dari transaksi. Qualified = sesuai area layanan, sesuai produk, dan punya kebutuhan beli yang nyata.'};
+  var rT={lbl:'Traffic Baru',txt:'—'},rV={lbl:'Valid Traffic',txt:'—'},rR={lbl:'Valid Traffic Rate',txt:'—'};
+  var out={rows:[rT,rV,rR],st:null,note:'Advertiser dinilai dari traffic baru (Chat New Leads) dan seberapa valid traffic itu, bukan dari transaksi. Tidak valid = luar area, luar produk, atau spam.'};
   if(!a)return out;
-  rP.txt=n0(a.iklan);
-  if(a.adTraffic==null||a.adQual==null){out.note='Angka bulan ini belum memuat Traffic dari Iklan dan Qualified Traffic. Manager mengisi di Pengaturan. '+out.note;return out;}
-  rT.txt=n0(a.adTraffic);
-  if(c.t_traffic_iklan>0){
-    var exp=c.t_traffic_iklan*(a.running?a.day/a.dim:1);
-    rT.tgtTxt=n0(c.t_traffic_iklan);rT.st=stOf(exp>0?a.adTraffic/exp:null,a.adTraffic>=c.t_traffic_iklan);rT.prog=clamp(a.adTraffic/c.t_traffic_iklan,0,1);sts.push(rT.st);
-  }else miss.push('target Traffic dari Iklan');
-  if(a.adTraffic>0){
-    var rate=a.adQual/a.adTraffic;rQ.txt=pc(rate);rQ.sub=n0(a.adQual)+' qualified dari '+n0(a.adTraffic)+' traffic iklan';
-    if(c.t_qtr>0){var tg=c.t_qtr/100;rQ.tgtTxt=pc(tg);rQ.st=stOf(rate/tg,false);rQ.prog=clamp(rate/tg,0,1);sts.push(rQ.st);}
-    else miss.push('target Qualified Traffic Rate');
+  if(a.chatNew==null){out.note='Angka bulan ini belum memuat Chat New Leads. Manager mengisi di Pengaturan. '+out.note;return out;}
+  rT.txt=n0(a.chatNew);
+  if(c.t_traffic_baru>0){
+    var exp=c.t_traffic_baru*(a.running?a.day/a.dim:1);
+    rT.tgtTxt=n0(c.t_traffic_baru);rT.st=stOf(exp>0?a.chatNew/exp:null,a.chatNew>=c.t_traffic_baru);rT.prog=clamp(a.chatNew/c.t_traffic_baru,0,1);sts.push(rT.st);
+  }else miss.push('target Traffic Baru');
+  if(a.luarArea==null||a.luarProduk==null||a.spam==null){
+    out.note='Angka bulan ini belum memuat rincian Leads Luar Area, Luar Produk, dan Spam. Manager mengisi di Pengaturan. '+out.note;return out;
+  }
+  var inv=a.luarArea+a.luarProduk+a.spam,valid=a.chatNew-inv;
+  rV.txt=n0(valid);rV.sub='Luar Area '+n0(a.luarArea)+' · Luar Produk '+n0(a.luarProduk)+' · Spam '+n0(a.spam);
+  if(a.chatNew>0){
+    var rate=valid/a.chatNew;rR.txt=pc(rate);rR.sub=n0(valid)+' valid dari '+n0(a.chatNew)+' traffic baru';
+    if(c.t_vtr>0){var tg=c.t_vtr/100;rR.tgtTxt=pc(tg);rR.st=stOf(rate/tg,false);rR.prog=clamp(rate/tg,0,1);sts.push(rR.st);}
+    else miss.push('target Valid Traffic Rate');
   }
   out.st=miss.length?null:worst(sts);
   if(miss.length)out.note='Belum diisi di Pengaturan: '+miss.join(' dan ')+'. '+out.note;
@@ -644,7 +648,7 @@ function setHb(id,status){
 }
 
 // ═════════════ PENGATURAN (Manager) ═════════════
-var AF=[['chatNew','Chat New Leads'],['chatEx','Chat Existing Leads'],['offTraffic','Customer Datang Offline'],['total','Jumlah Nota'],['online','Beli lewat chat (Deal Online)'],['iklan','Pembeli dari Iklan'],['rujukan','Pembeli dari rujukan Kumasindo'],['adTraffic','Traffic dari Iklan'],['adQual','Qualified Traffic']];
+var AF=[['chatNew','Chat New Leads'],['chatEx','Chat Existing Leads'],['offTraffic','Customer Datang Offline'],['total','Jumlah Nota'],['online','Beli lewat chat (Deal Online)'],['rujukan','Pembeli dari rujukan Kumasindo'],['luarArea','Leads Luar Area'],['luarProduk','Leads Luar Produk'],['spam','Spam']];
 function vSetelan(K){
   var rows=(D.angka||[]).slice().sort(function(a,b){return a.asOf<b.asOf?1:-1;}),last=rows[0]||{};
   var fld=function(f){return '<div><label class="lbl">'+f[1]+'</label><input class="inp" type="number" inputmode="numeric" min="0" step="1" id="a_'+f[0]+'" value="'+(last[f[0]]!=null?last[f[0]]:'')+'" oninput="angkaLive()"></div>';};
@@ -656,12 +660,12 @@ function vSetelan(K){
     '<div class="grp"><b>Transaksi</b></div><div class="sm mut" style="margin-bottom:10px">Jumlah Nota = semua nota, online dan di toko. Deal Online = yang kesepakatannya terjadi lewat chat.</div>'+
     '<div class="grid2">'+AF.slice(3,5).map(fld).join('')+'</div>'+
     '<div class="grp"><b>Asal pembeli</b></div><div class="sm mut" style="margin-bottom:10px">Hanya pembeli yang sudah ditanya asalnya. Yang belum ditanya jangan dimasukkan.</div>'+
-    '<div class="grid2 gridA">'+AF.slice(5,7).map(fld).join('')+'</div>'+
-    '<div class="grp"><b>Advertiser</b></div><div class="sm mut" style="margin-bottom:10px">Traffic dari Iklan = traffic (chat atau datang) yang berasal dari iklan. Qualified Traffic = bagian yang <b>sesuai area layanan, sesuai produk, dan punya kebutuhan beli nyata</b>.</div>'+
-    '<div class="grid2">'+AF.slice(7).map(fld).join('')+'</div>'+
+    '<div class="grid2">'+AF.slice(5,6).map(fld).join('')+'</div>'+
+    '<div class="grp"><b>Traffic baru yang tidak valid</b> <span class="mut">(untuk Advertiser)</span></div><div class="sm mut" style="margin-bottom:10px">Dari Chat New Leads di atas, berapa yang tidak layak dilayani: di luar area layanan, di luar produk yang dijual, atau spam. Valid Traffic = Chat New Leads − ketiganya.</div>'+
+    '<div class="grid2 gridB">'+AF.slice(6).map(fld).join('')+'</div>'+
     '<div id="a_live" style="margin-top:16px"></div><button class="btn" id="a_save" onclick="saveAngka()">Simpan angka</button></div>';
   var c=K.c,LBL={};CFG_FIELDS.forEach(function(f){LBL[f[0]]=f[1];});
-  var inp=function(k,ro){return '<div><label class="lbl">'+LBL[k]+'</label><input class="inp'+(ro?' ro':'')+'" type="number" step="'+(k==='conv_target'||k==='t_qtr'?'0.1':'1')+'" min="0" id="cf_'+k+'" value="'+(c[k]==null?'':c[k])+'"'+(ro?' readonly':'')+'></div>';};
+  var inp=function(k,ro){return '<div><label class="lbl">'+LBL[k]+'</label><input class="inp'+(ro?' ro':'')+'" type="number" step="'+(k==='conv_target'||k==='t_vtr'?'0.1':'1')+'" min="0" id="cf_'+k+'" value="'+(c[k]==null?'':c[k])+'"'+(ro?' readonly':'')+'></div>';};
   h+='<div class="card"><div class="h">2 · Target</div>'+
     '<div class="grp" style="margin-top:6px;border-top:none;padding-top:0"><span class="tag na">TERKUNCI</span> <b>Patokan awal dan target KR 1 dan KR 2</b></div><div class="sm mut">Sudah disepakati. Semua status dihitung dari angka ini. Jangan diubah kecuali rencananya berubah.</div>'+
     '<div class="cfg-grid">'+CFG_LOCK.map(function(f){return inp(f[0],true);}).join('')+'</div>'+
@@ -690,33 +694,33 @@ function angkaLive(){
   var errs=[],warns=[];
   if(!v.asOf)errs.push('Tanggal belum diisi.');
   var same=(D.angka||[]).filter(function(x){return x.asOf===v.asOf;})[0];
-  var sum=v.iklan+v.rujukan+(same?same.konten+same.lainnya:0);
+  var sum=v.rujukan+(same?same.iklan+same.konten+same.lainnya:0);
   if(v.online>v.total)errs.push('Deal Online ('+n0(v.online)+') tidak boleh lebih besar dari Jumlah Nota ('+n0(v.total)+').');
   if(sum>v.total)errs.push('Jumlah asal pembeli ('+n0(sum)+') melebihi Jumlah Nota ('+n0(v.total)+').');
-  if(v.adQual>v.adTraffic)errs.push('Qualified Traffic ('+n0(v.adQual)+') tidak boleh lebih besar dari Traffic dari Iklan ('+n0(v.adTraffic)+').');
+  var inv=v.luarArea+v.luarProduk+v.spam;
+  if(inv>v.chatNew)errs.push('Leads tidak valid ('+n0(inv)+') tidak boleh lebih besar dari Chat New Leads ('+n0(v.chatNew)+').');
   var traffic=v.chatNew+v.chatEx+v.offTraffic;
-  if(v.adTraffic>traffic)warns.push('Traffic dari Iklan ('+n0(v.adTraffic)+') lebih besar dari Total Traffic ('+n0(traffic)+'). Cek angkanya.');
   if(v.total>traffic)warns.push('Jumlah Nota ('+n0(v.total)+') lebih besar dari Total Traffic ('+n0(traffic)+'). Cek: apakah semua pembeli sudah masuk hitungan traffic?');
   // angka kumulatif tidak boleh lebih kecil dari baris sebelumnya di bulan yang sama
   var prev=null;(D.angka||[]).forEach(function(x){if(v.asOf&&x.asOf<v.asOf&&x.asOf.slice(0,7)===v.asOf.slice(0,7)&&(!prev||x.asOf>prev.asOf))prev=x;});
-  if(prev){var pf={chatNew:'Chat New Leads',chatEx:'Chat Existing Leads',offTraffic:'Customer Datang Offline',total:'Jumlah Nota',online:'Deal Online',iklan:'Iklan',rujukan:'Rujukan',adTraffic:'Traffic dari Iklan',adQual:'Qualified Traffic'};
+  if(prev){var pf={chatNew:'Chat New Leads',chatEx:'Chat Existing Leads',offTraffic:'Customer Datang Offline',total:'Jumlah Nota',online:'Deal Online',rujukan:'Rujukan',luarArea:'Leads Luar Area',luarProduk:'Leads Luar Produk',spam:'Spam'};
     Object.keys(pf).forEach(function(k){if(prev[k]!=null&&v[k]<prev[k])warns.push(pf[k]+' lebih kecil dari angka '+dLabel(prev.asOf)+' ('+n0(prev[k])+'). Angka harus kumulatif.');});}
   var chat=v.chatNew+v.chatEx;
-  var html='<div class="sm">Total Traffic: <b>'+n0(traffic)+'</b> · Konversi (KR 1): <b>'+(traffic>0?pc(v.total/traffic):'—')+'</b> · Online Chat Conversion: <b>'+(chat>0?pc(v.online/chat):'—')+'</b> · Qualified Traffic Rate: <b>'+(v.adTraffic>0?pc(v.adQual/v.adTraffic):'—')+'</b></div>'+outP;
+  var html='<div class="sm">Total Traffic: <b>'+n0(traffic)+'</b> · Konversi (KR 1): <b>'+(traffic>0?pc(v.total/traffic):'—')+'</b> · Online Chat Conversion: <b>'+(chat>0?pc(v.online/chat):'—')+'</b> · Valid Traffic: <b>'+n0(v.chatNew-inv)+'</b> ('+(v.chatNew>0?pc((v.chatNew-inv)/v.chatNew):'—')+')</div>'+outP;
   html+=errs.map(function(e){return '<div class="sm" style="color:var(--bad);font-weight:700;margin-top:6px">'+esc(e)+'</div>';}).join('')+warns.map(function(e){return '<div class="sm" style="color:var(--warn);font-weight:700;margin-top:6px">'+esc(e)+'</div>';}).join('');
   el.innerHTML=html;sv.disabled=errs.length>0;
 }
 function saveAngka(){
   var r=angkaVals();if(r.bad.length)return;var v=r.v;
-  var same=(D.angka||[]).filter(function(x){return x.asOf===v.asOf;})[0];   // Konten dan Lainnya tidak ditanyakan lagi; nilai lama di tanggal yang sama dipertahankan
-  var p={action:'angka',asOf:v.asOf,chatNew:v.chatNew,chatEx:v.chatEx,offTraffic:v.offTraffic,adTraffic:v.adTraffic,adQual:v.adQual,online:v.online,total:v.total,iklan:v.iklan,konten:same?same.konten:0,rujukan:v.rujukan,lainnya:same?same.lainnya:0};
+  var same=(D.angka||[]).filter(function(x){return x.asOf===v.asOf;})[0];   // Iklan, Konten, Lainnya tidak ditanyakan lagi; nilai lama di tanggal yang sama dipertahankan
+  var p={action:'angka',asOf:v.asOf,chatNew:v.chatNew,chatEx:v.chatEx,offTraffic:v.offTraffic,luarArea:v.luarArea,luarProduk:v.luarProduk,spam:v.spam,online:v.online,total:v.total,iklan:same?same.iklan:0,konten:same?same.konten:0,rujukan:v.rujukan,lainnya:same?same.lainnya:0};
   $('a_save').disabled=true;
   saveAndReload(p,'Angka tersimpan').then(function(ok){if(!ok){var e=$('a_save');if(e)e.disabled=false;}});
 }
 function saveCfg(){
   var cur=cfg(),vals={},bad=null;
   CFG_FIELDS.forEach(function(f){var s=$('cf_'+f[0]).value.trim(),n=s===''?null:Number(s);
-    if(s!==''&&(isNaN(n)||n<0||((f[0]==='conv_target'||f[0]==='t_qtr')&&n>100)))bad=f[1];
+    if(s!==''&&(isNaN(n)||n<0||((f[0]==='conv_target'||f[0]==='t_vtr')&&n>100)))bad=f[1];
     var old=cur[f[0]];if((n==null?'':n)!==(old==null?'':old))vals[f[0]]=s;});
   if(bad){toast('Nilai tidak valid: '+bad,true);return;}
   if(!Object.keys(vals).length){toast('Tidak ada perubahan');return;}
