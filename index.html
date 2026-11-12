@@ -162,8 +162,8 @@ details.card summary{font-size:13px;font-weight:800;cursor:pointer}
 // ═════════════ KONFIGURASI ═════════════
 var APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbzMAsn2ClE8-Roz1UY5lkM7hHqw5T5ulNGOL0v0ybLIZhWHelUeoiFGjmYEHAILi52b/exec';
 var PIN='1601';
-var APP_VER='v18';
-var NEED_SCRIPT=3;   // versi Apps Script yang dibutuhkan app ini
+var APP_VER='v19';
+var NEED_SCRIPT=4;   // versi Apps Script yang dibutuhkan app ini
 // App Brand Creator: sumber angka Dicky (dibaca langsung, tidak diketik ulang di sini)
 var BC_URL='https://script.google.com/macros/s/AKfycbx7fvep5uCT_s_RUYbbcv4liCG0jRq5z53kzmz9BaL3QDTw2dI2PfZGo00UHhHnIPu0/exec';
 var BC_KATS=['Awareness Online','Awareness Offline','Iklan Penjualan'],BC_DIVISI=['Kubah Emas','Kumasindo'],BC_WK='__winner__';
@@ -180,16 +180,19 @@ var PEOPLE={
 var ROLE_NAME={brand:'Brand Creator',ads:'Advertiser',cs:'CS Kubah Emas',kum:'CS Kumasindo',mgr:'Manager'};
 // baris kontribusi per peran: [kunci angka, label, kunci target]
 var ROLE_ROWS={
-  ads:[['chat','Chat masuk dari traffic',null],['iklan','Pembelian dari iklan','t_iklan']],
-  cs:[['conv','Konversi chat yang ditangani',null],['chat','Chat masuk',null],['online','Deal Online',null]],
+  ads:[['chatNew','Chat New Leads',null],['iklan','Pembelian dari iklan','t_iklan']],
+  cs:[['conv','Online Chat Conversion Rate',null],['chat','Chat masuk (baru + lama)',null],['online','Deal Online',null]],
   kum:[['rujukan','Pembelian dari rujukan Kumasindo','t_rujukan']]
 };
-var DEFAULTS={chat_base:1800,online_base:110,total_base:441,online_target:144,total_target:513,
-  t_iklan:null,t_rujukan:null};
-var CFG_LOCK=[['chat_base','Chat masuk per bulan (patokan awal)'],['online_base','Deal Online per bulan (patokan awal)'],['total_base','Jumlah transaksi per bulan (patokan awal)'],
-  ['online_target','Target Deal Online akhir Januari (dipakai menurunkan target konversi)'],['total_target','Target jumlah transaksi per bulan, akhir Januari']];
+// KR1 dan KR2 memakai Jumlah Nota & Total Traffic. chat_base/online_base/online_target hanya untuk indikator Online Chat Conversion Rate (CS), bukan KR.
+// conv_target disimpan dalam persen (35 = 35%). nota_* menggantikan total_* (nilai lama dipakai kalau nota_* belum pernah diisi).
+var DEFAULTS={traffic_base:null,nota_base:441,conv_target:null,nota_target:513,chat_base:1800,online_base:110,online_target:144,t_iklan:null,t_rujukan:null};
+var LEGACY_KEY={nota_base:'total_base',nota_target:'total_target'};
+var CFG_LOCK=[['traffic_base','Total Traffic per bulan — Patokan Awal'],['nota_base','Jumlah Nota per bulan — Patokan Awal'],
+  ['conv_target','Target Traffic to Conversion Rate — Akhir Periode (%)'],['nota_target','Target Jumlah Nota per bulan — Akhir Periode']];
+var CFG_ONLINE=[['chat_base','Chat masuk per bulan — patokan awal'],['online_base','Deal Online per bulan — patokan awal'],['online_target','Target Deal Online — akhir Januari']];
 var CFG_TARGET=[['t_iklan','Pembelian dari iklan per bulan'],['t_rujukan','Pembelian dari rujukan Kumasindo per bulan']];
-var CFG_FIELDS=CFG_LOCK.concat(CFG_TARGET);
+var CFG_FIELDS=CFG_LOCK.concat(CFG_ONLINE,CFG_TARGET);
 
 // ═════════════ UTIL ═════════════
 var S={ok:false,who:'',tab:'home',loaded:false,err:'',hbEdit:'',bcErr:''};
@@ -215,7 +218,7 @@ function toast(msg,bad){var t=document.createElement('div');t.className='toast'+
 // ═════════════ API ═════════════
 function apiReady(){return APPS_SCRIPT_URL&&APPS_SCRIPT_URL.indexOf('PASTE_')!==0;}
 function scriptOld(){return S.loaded&&D.v!==NEED_SCRIPT;}
-var OLD_MSG='Apps Script belum diperbarui ke versi 3. Deploy ulang dulu (Deploy > Manage deployments > pensil > Version: New).';
+var OLD_MSG='Apps Script belum diperbarui ke versi 4. Deploy ulang dulu (Deploy > Manage deployments > pensil > Version: New).';
 function bcLoad(){
   // kegagalan Brand Creator tidak boleh menjatuhkan seluruh app: hanya baris Dicky yang kosong
   return fetch(BC_URL+'?action=load&cb='+Date.now()).then(function(r){return r.json();}).then(function(j){
@@ -249,6 +252,7 @@ function cfg(){
   var c={};
   Object.keys(DEFAULTS).forEach(function(k){
     var raw=D.config?D.config[k]:undefined;
+    if(raw===undefined&&LEGACY_KEY[k]&&D.config)raw=D.config[LEGACY_KEY[k]];
     if(raw===undefined)c[k]=DEFAULTS[k];
     else if(raw==='')c[k]=null;
     else{var n=Number(raw);c[k]=isNaN(n)?DEFAULTS[k]:n;}
@@ -261,23 +265,33 @@ function calc(){
   var c=cfg();
   var rows=(D.angka||[]).slice().sort(function(a,b){return a.asOf<b.asOf?-1:a.asOf>b.asOf?1:0;});
   var byM={};rows.forEach(function(r){byM[r.asOf.slice(0,7)]=r;});
-  var convBase=c.chat_base>0?c.online_base/c.chat_base:0;
-  var convTarget=c.chat_base>0?c.online_target/c.chat_base:0;
+  // KR1: Jumlah Nota ÷ Total Traffic. Patokan dan target diisi Manager.
+  var convBase=(c.traffic_base>0&&c.nota_base!=null)?c.nota_base/c.traffic_base:null;
+  var convTarget=c.conv_target!=null?c.conv_target/100:null;
+  // indikator Online/CS: Deal Online ÷ chat masuk (rumus lama KR1)
+  var oBase=c.chat_base>0?c.online_base/c.chat_base:0;
+  var oTarget=c.chat_base>0?c.online_target/c.chat_base:0;
+  var notaOk=c.nota_base!=null&&c.nota_target!=null;
   var months=PERIOD.months.map(function(ym,i){
     var r=byM[ym],f=(i+1)/3;
-    var m={ym:ym,i:i+1,has:!!r,msConv:convBase+(convTarget-convBase)*f,msTotal:c.total_base+((c.total_target==null?c.total_base:c.total_target)-c.total_base)*f};
+    var m={ym:ym,i:i+1,has:!!r,
+      msConv:(convBase!=null&&convTarget!=null)?convBase+(convTarget-convBase)*f:null,
+      msO:oBase+(oTarget-oBase)*f,
+      msTotal:notaOk?c.nota_base+(c.nota_target-c.nota_base)*f:null};
     if(r){
       var day=+r.asOf.slice(8),d=dim(ym),running=day<d;
       m.asOf=r.asOf;m.day=day;m.dim=d;m.running=running;m.early=running&&day<7;m.k=running?d/day:1;
       ['chat','online','total','iklan','konten','rujukan','lainnya'].forEach(function(k){m[k]=r[k]||0;});
-      m.offline=Math.max(0,r.total-r.online);
+      m.chatNew=r.chatNew;m.chatEx=r.chatEx;m.offTraffic=r.offTraffic;   // null = baris lama sebelum Total Traffic dipakai
+      m.traffic=(r.chatNew==null||r.chatEx==null||r.offTraffic==null)?null:r.chatNew+r.chatEx+r.offTraffic;
       m.projTotal=r.total*m.k;
-      m.conv=r.chat>0?r.online/r.chat:null;
+      m.conv=m.traffic>0?r.total/m.traffic:null;       // KR1
+      m.oconv=r.chat>0?r.online/r.chat:null;            // Online Chat Conversion Rate
     }
     return m;
   });
   var act=null;months.forEach(function(m){if(m.has)act=m;});
-  return {c:c,months:months,act:act,convBase:convBase,convTarget:convTarget};
+  return {c:c,months:months,act:act,convBase:convBase,convTarget:convTarget,oBase:oBase,oTarget:oTarget};
 }
 // status: TERCAPAI (target akhir sudah dicapai) / ON TRACK (sesuai atau di atas target bulan ini) / WASPADA (≥70%) / TERTINGGAL
 function stOf(ratio,done){if(done)return 'TERCAPAI';if(ratio==null)return null;return ratio>=1?'ON TRACK':ratio>=0.7?'WASPADA':'TERTINGGAL';}
@@ -286,22 +300,26 @@ function tagOf(s){return '<span class="tag '+stCls(s)+'">'+(s||'BELUM ADA DATA')
 function worst(list){var o=['TERTINGGAL','WASPADA','ON TRACK','TERCAPAI'],w=null;list.forEach(function(s){if(s&&(w==null||o.indexOf(s)<o.indexOf(w)))w=s;});return w;}
 function ratioTo(now,base,ms){var den=ms-base;return den>0?(now-base)/den:(now>=ms?1:0);}
 
-// KR 1: Traffic to Conversion Rate = Deal Online ÷ chat masuk
+// KR 1: Traffic to Conversion Rate = Jumlah Nota ÷ Total Traffic (chat baru + chat lama + customer datang offline)
 function kr1(K){
-  var a=K.act,o={code:'KR 1',title:'Traffic to Conversion Rate',unit:'pct',now:null,tgt:K.convTarget,base:K.convBase,ms:null,st:null,extra:'',def:'Pembelian lewat chat ÷ chat masuk'};
-  if(!a||a.conv==null||!(K.convTarget>0))return o;
+  var a=K.act,o={code:'KR 1',title:'Traffic to Conversion Rate',unit:'pct',now:null,tgt:K.convTarget,base:K.convBase,ms:null,st:null,extra:'',def:'Jumlah nota ÷ total traffic (chat baru + chat lama + datang ke toko)'};
+  if(K.convBase==null||K.convTarget==null){o.msg='Patokan atau target belum diisi di Pengaturan.';return o;}
+  if(!a)return o;
+  if(a.traffic==null){o.msg='Angka bulan ini belum memuat rincian Total Traffic. Manager mengisi ulang di Pengaturan.';return o;}
+  if(!(a.traffic>0)){o.msg='Total Traffic masih 0.';return o;}
   o.now=a.conv;o.ms=a.msConv;
   o.st=stOf(ratioTo(a.conv,K.convBase,a.msConv),a.conv>=K.convTarget);
-  o.extra='Chat masuk '+n0(a.chat)+' · Deal Online '+n0(a.online);
+  o.extra='Nota '+n0(a.total)+' dari Total Traffic '+n0(a.traffic)+' (chat baru '+n0(a.chatNew)+' · chat lama '+n0(a.chatEx)+' · datang ke toko '+n0(a.offTraffic)+')';
   return o;
 }
-// KR 2: Jumlah Transaksi per bulan (online + datang ke toko). Bulan berjalan memakai proyeksi akhir bulan.
+// KR 2: Jumlah Transaksi per bulan = Jumlah Nota. Bulan berjalan memakai proyeksi akhir bulan.
 function kr2(K){
-  var a=K.act,c=K.c,o={code:'KR 2',title:'Jumlah Transaksi per Bulan',unit:'n',now:null,tgt:c.total_target,base:c.total_base,ms:null,st:null,extra:'',def:'Beli lewat chat + beli datang ke toko'};
-  if(!a||!(c.total_target>0))return o;
+  var a=K.act,c=K.c,o={code:'KR 2',title:'Jumlah Transaksi per Bulan',unit:'n',now:null,tgt:c.nota_target,base:c.nota_base,ms:null,st:null,extra:'',def:'Jumlah nota dalam sebulan'};
+  if(c.nota_base==null||!(c.nota_target>0)){o.msg='Patokan atau target belum diisi di Pengaturan.';return o;}
+  if(!a)return o;
   o.now=a.running?a.projTotal:a.total;o.ms=a.msTotal;o.proj=a.running;
-  o.st=stOf(ratioTo(o.now,c.total_base,a.msTotal),a.total>=c.total_target);
-  o.extra=a.running?'Baru '+n0(a.total)+' transaksi sampai '+dLabel(a.asOf)+' (proyeksi akhir bulan '+n0(a.projTotal)+')':'Total bulan itu '+n0(a.total)+' transaksi';
+  o.st=stOf(ratioTo(o.now,c.nota_base,a.msTotal),a.total>=c.nota_target);
+  o.extra=a.running?'Baru '+n0(a.total)+' nota sampai '+dLabel(a.asOf)+' (proyeksi akhir bulan '+n0(a.projTotal)+')':'Total bulan itu '+n0(a.total)+' nota';
   return o;
 }
 // Angka Brand Creator bulan berjalan, dihitung ulang dari data app Brand Creator dengan aturan yang SAMA seperti dashboard-nya:
@@ -355,12 +373,12 @@ function roleContrib(role,K){
     var row={lbl:r[1],txt:'—'};
     if(a){
       if(r[0]==='conv'){
-        var o1=kr1(K);row.txt=a.conv==null?'—':pc(a.conv);
-        if(o1.now!=null){row.tgtTxt=pc(K.convTarget);row.st=o1.st;row.prog=clamp(ratioTo(a.conv,K.convBase,K.convTarget),0,1);sts.push(o1.st);}
+        row.txt=a.oconv==null?'—':pc(a.oconv);
+        if(a.oconv!=null&&K.oTarget>0){var so=stOf(ratioTo(a.oconv,K.oBase,a.msO),a.oconv>=K.oTarget);row.tgtTxt=pc(K.oTarget);row.st=so;row.prog=clamp(ratioTo(a.oconv,K.oBase,K.oTarget),0,1);sts.push(so);}
       }else{
-        var v=a[r[0]];row.txt=n0(v);
+        var v=a[r[0]];row.txt=v==null?'—':n0(v);
         var tg=r[2]?c[r[2]]:null;
-        if(tg>0){
+        if(tg>0&&v!=null){
           var exp=tg*(a.running?a.day/a.dim:1);
           row.tgtTxt=n0(tg);row.st=stOf(exp>0?v/exp:null,v>=tg);row.prog=clamp(v/tg,0,1);sts.push(row.st);
         }else if(r[2])out.noTarget=true;
@@ -442,10 +460,10 @@ function weekDone(who){var w=weekStart();return myCheckins(who).some(function(c)
 function fmtKr(o,v){return v==null?'—':o.unit==='pct'?pc(v):n0(v);}
 function krCard(o){
   var h='<div class="card kr g"><div class="row"><div class="kr-r" style="margin:0">'+o.code+'</div><span class="sp">'+tagOf(o.st)+'</span></div>'+
-    '<div class="kr-t" style="margin-top:6px">'+esc(o.title)+'</div>';
+    '<div class="kr-t" style="margin-top:6px">'+esc(o.title)+'</div><div class="sm mut">'+esc(o.def)+'</div>';
   if(o.now==null){
     h+='<div class="krn"><span class="now">—</span><span class="arr">→</span><span class="tg">'+(o.tgt>0?fmtKr(o,o.tgt):'?')+'</span></div>'+
-      '<div class="sm mut" style="margin-top:6px">'+(o.tgt>0?'Belum ada angka bulan ini. Manager mengisi di Pengaturan.':'Target belum diisi di Pengaturan.')+'</div>';
+      '<div class="sm mut" style="margin-top:6px">'+esc(o.msg||'Belum ada angka bulan ini. Manager mengisi di Pengaturan.')+'</div>';
     return h+'</div>';
   }
   h+='<div class="krn"><span class="now">'+fmtKr(o,o.now)+'</span><span class="arr">→</span><span class="tg">'+fmtKr(o,o.tgt)+'</span></div>'+
@@ -603,26 +621,30 @@ function setHb(id,status){
 }
 
 // ═════════════ PENGATURAN (Manager) ═════════════
-var AF=[['chat','Chat masuk'],['online','Beli lewat chat (Deal Online)'],['offline','Beli datang ke toko'],['iklan','Pembeli dari Iklan'],['rujukan','Pembeli dari rujukan Kumasindo']];
+var AF=[['chatNew','Chat New Leads'],['chatEx','Chat Existing Leads'],['offTraffic','Customer Datang Offline'],['total','Jumlah Nota'],['online','Beli lewat chat (Deal Online)'],['iklan','Pembeli dari Iklan'],['rujukan','Pembeli dari rujukan Kumasindo']];
 function vSetelan(K){
   var rows=(D.angka||[]).slice().sort(function(a,b){return a.asOf<b.asOf?1:-1;}),last=rows[0]||{};
-  if(last.asOf)last=Object.assign({},last,{offline:Math.max(0,last.total-last.online)});
   var fld=function(f){return '<div><label class="lbl">'+f[1]+'</label><input class="inp" type="number" inputmode="numeric" min="0" step="1" id="a_'+f[0]+'" value="'+(last[f[0]]!=null?last[f[0]]:'')+'" oninput="angkaLive()"></div>';};
   var h='<div class="vhead"><div class="mid">Pengaturan Manager</div><div class="sm mut">Angka bulanan dan target. Tim tidak melihat halaman ini.</div></div>';
   h+='<div class="card"><div class="h">1 · Update angka</div><div class="sm mut" style="margin-bottom:6px">Isi <b>kumulatif sejak tanggal 1</b> bulan itu, bukan angka per minggu. Satu tanggal = satu baris; tanggal yang sama akan menimpa. Kolom sudah terisi dengan angka terakhir.</div>'+
     '<label class="lbl">Angka per tanggal</label><input class="inp" type="date" id="a_asOf" value="'+today()+'" oninput="angkaLive()">'+
-    '<div class="grp"><b>Traffic dan transaksi</b></div><div class="sm mut" style="margin-bottom:10px">Jumlah transaksi dihitung otomatis: beli lewat chat + beli datang ke toko.</div>'+
+    '<div class="grp"><b>Total Traffic</b> = chat baru + chat lama + datang ke toko</div><div class="sm mut" style="margin-bottom:10px">Kalau orang yang sama awalnya chat lalu datang ke toko, hitung <b>hanya</b> di Customer Datang Offline. Jangan dihitung dua kali.</div>'+
     '<div class="grid2 gridB">'+AF.slice(0,3).map(fld).join('')+'</div>'+
+    '<div class="grp"><b>Transaksi</b></div><div class="sm mut" style="margin-bottom:10px">Jumlah Nota = semua nota, online dan di toko. Deal Online = yang kesepakatannya terjadi lewat chat.</div>'+
+    '<div class="grid2">'+AF.slice(3,5).map(fld).join('')+'</div>'+
     '<div class="grp"><b>Asal pembeli</b></div><div class="sm mut" style="margin-bottom:10px">Hanya pembeli yang sudah ditanya asalnya. Yang belum ditanya jangan dimasukkan.</div>'+
-    '<div class="grid2 gridA">'+AF.slice(3,5).map(fld).join('')+'</div>'+
+    '<div class="grid2 gridA">'+AF.slice(5).map(fld).join('')+'</div>'+
     '<div id="a_live" style="margin-top:16px"></div><button class="btn" id="a_save" onclick="saveAngka()">Simpan angka</button></div>';
   var c=K.c,LBL={};CFG_FIELDS.forEach(function(f){LBL[f[0]]=f[1];});
-  var inp=function(k,ro){return '<div><label class="lbl">'+LBL[k]+'</label><input class="inp'+(ro?' ro':'')+'" type="number" step="1" min="0" id="cf_'+k+'" value="'+(c[k]==null?'':c[k])+'"'+(ro?' readonly':'')+'></div>';};
+  var inp=function(k,ro){return '<div><label class="lbl">'+LBL[k]+'</label><input class="inp'+(ro?' ro':'')+'" type="number" step="'+(k==='conv_target'?'0.1':'1')+'" min="0" id="cf_'+k+'" value="'+(c[k]==null?'':c[k])+'"'+(ro?' readonly':'')+'></div>';};
   h+='<div class="card"><div class="h">2 · Target</div>'+
-    '<div class="grp" style="margin-top:6px;border-top:none;padding-top:0"><span class="tag na">TERKUNCI</span> <b>Patokan awal dan target KR</b></div><div class="sm mut">Sudah disepakati. Semua status dihitung dari angka ini. Jangan diubah kecuali rencananya berubah.</div>'+
+    '<div class="grp" style="margin-top:6px;border-top:none;padding-top:0"><span class="tag na">TERKUNCI</span> <b>Patokan awal dan target KR 1 dan KR 2</b></div><div class="sm mut">Sudah disepakati. Semua status dihitung dari angka ini. Jangan diubah kecuali rencananya berubah.</div>'+
     '<div class="cfg-grid">'+CFG_LOCK.map(function(f){return inp(f[0],true);}).join('')+'</div>'+
+    '<div class="sm" style="margin-top:12px">'+(K.convBase!=null?'Patokan KR 1 = '+n0(c.nota_base)+' ÷ '+n0(c.traffic_base)+' = <b>'+pc(K.convBase)+'</b>'+(K.convTarget!=null?' → target <b>'+pc(K.convTarget)+'</b>. Target tiap bulan naik bertahap dari patokan ke target akhir periode.':'. Target belum diisi.'):'Isi Total Traffic dan Jumlah Nota patokan awal supaya patokan KR 1 terhitung (Jumlah Nota ÷ Total Traffic).')+' KR 2 memakai patokan Jumlah Nota yang sama.</div>'+
+    '<div class="grp"><span class="tag na">TERKUNCI</span> <b>Indikator Online / CS</b> <span class="mut">(bukan KR)</span></div><div class="sm mut">Dipakai untuk Online Chat Conversion Rate = Deal Online ÷ chat masuk, kartu Tri. Tidak mempengaruhi KR 1.</div>'+
+    '<div class="cfg-grid">'+CFG_ONLINE.map(function(f){return inp(f[0],true);}).join('')+'</div>'+
+    '<div class="sm" style="margin-top:12px">Online Chat Conversion Rate: patokan <b>'+pc(K.oBase)+'</b> → target <b>'+pc(K.oTarget)+'</b>.</div>'+
     '<button class="btn ghost" id="cf_unlock" style="margin-top:12px" onclick="unlockCfg()">Buka kunci untuk mengubah</button>'+
-    '<div class="sm" style="margin-top:12px">Konversi: patokan <b>'+pc(K.convBase)+'</b> → target <b>'+pc(K.convTarget)+'</b> (Deal Online ÷ chat masuk). Target tiap bulan naik bertahap dari patokan ke target Januari.</div>'+
     '<div class="grp"><span class="tag warn">ISI</span> <b>Target kontribusi per orang, per bulan</b></div><div class="sm mut">Target Brand Creator tidak diisi di sini. Kosongkan kalau belum ada: baris tanpa target tampil tanpa status.</div>'+
     '<div class="cfg-grid">'+CFG_TARGET.map(function(f){return inp(f[0],false);}).join('')+'</div>'+
     '<button class="btn" id="cf_save" style="margin-top:18px" onclick="saveCfg()">Simpan target</button></div>';
@@ -634,7 +656,6 @@ function unlockCfg(){document.querySelectorAll('input.ro').forEach(function(i){i
 function angkaVals(){
   var v={asOf:$('a_asOf').value},bad=[];
   AF.forEach(function(f){var s=$('a_'+f[0]).value;v[f[0]]=s===''?null:Number(s);if(s===''||isNaN(v[f[0]])||v[f[0]]<0||v[f[0]]!==Math.floor(v[f[0]]))bad.push(f[0]);});
-  if(!bad.length)v.total=v.online+v.offline;
   return {v:v,bad:bad};
 }
 function angkaLive(){
@@ -645,26 +666,30 @@ function angkaLive(){
   if(!v.asOf)errs.push('Tanggal belum diisi.');
   var same=(D.angka||[]).filter(function(x){return x.asOf===v.asOf;})[0];
   var sum=v.iklan+v.rujukan+(same?same.konten+same.lainnya:0);
-  if(sum>v.total)errs.push('Jumlah asal pembeli ('+n0(sum)+') melebihi total transaksi ('+n0(v.total)+').');
+  if(v.online>v.total)errs.push('Deal Online ('+n0(v.online)+') tidak boleh lebih besar dari Jumlah Nota ('+n0(v.total)+').');
+  if(sum>v.total)errs.push('Jumlah asal pembeli ('+n0(sum)+') melebihi Jumlah Nota ('+n0(v.total)+').');
+  var traffic=v.chatNew+v.chatEx+v.offTraffic;
+  if(v.total>traffic)warns.push('Jumlah Nota ('+n0(v.total)+') lebih besar dari Total Traffic ('+n0(traffic)+'). Cek: apakah semua pembeli sudah masuk hitungan traffic?');
   // angka kumulatif tidak boleh lebih kecil dari baris sebelumnya di bulan yang sama
   var prev=null;(D.angka||[]).forEach(function(x){if(v.asOf&&x.asOf<v.asOf&&x.asOf.slice(0,7)===v.asOf.slice(0,7)&&(!prev||x.asOf>prev.asOf))prev=x;});
-  if(prev){var pf={chat:'Chat masuk',online:'Deal Online',iklan:'Iklan',rujukan:'Rujukan'};
-    Object.keys(pf).forEach(function(k){if(v[k]<prev[k])warns.push(pf[k]+' lebih kecil dari angka '+dLabel(prev.asOf)+' ('+n0(prev[k])+'). Angka harus kumulatif.');});}
-  var html='<div class="sm">Jumlah transaksi: <b>'+n0(v.total)+'</b> (lewat chat '+n0(v.online)+' + ke toko '+n0(v.offline)+') · Konversi: <b>'+(v.chat>0?pc(v.online/v.chat):'—')+'</b></div>'+outP;
+  if(prev){var pf={chatNew:'Chat New Leads',chatEx:'Chat Existing Leads',offTraffic:'Customer Datang Offline',total:'Jumlah Nota',online:'Deal Online',iklan:'Iklan',rujukan:'Rujukan'};
+    Object.keys(pf).forEach(function(k){if(prev[k]!=null&&v[k]<prev[k])warns.push(pf[k]+' lebih kecil dari angka '+dLabel(prev.asOf)+' ('+n0(prev[k])+'). Angka harus kumulatif.');});}
+  var chat=v.chatNew+v.chatEx;
+  var html='<div class="sm">Total Traffic: <b>'+n0(traffic)+'</b> · Konversi (KR 1): <b>'+(traffic>0?pc(v.total/traffic):'—')+'</b> · Online Chat Conversion: <b>'+(chat>0?pc(v.online/chat):'—')+'</b></div>'+outP;
   html+=errs.map(function(e){return '<div class="sm" style="color:var(--bad);font-weight:700;margin-top:6px">'+esc(e)+'</div>';}).join('')+warns.map(function(e){return '<div class="sm" style="color:var(--warn);font-weight:700;margin-top:6px">'+esc(e)+'</div>';}).join('');
   el.innerHTML=html;sv.disabled=errs.length>0;
 }
 function saveAngka(){
   var r=angkaVals();if(r.bad.length)return;var v=r.v;
   var same=(D.angka||[]).filter(function(x){return x.asOf===v.asOf;})[0];   // Konten dan Lainnya tidak ditanyakan lagi; nilai lama di tanggal yang sama dipertahankan
-  var p={action:'angka',asOf:v.asOf,chat:v.chat,online:v.online,total:v.total,iklan:v.iklan,konten:same?same.konten:0,rujukan:v.rujukan,lainnya:same?same.lainnya:0};
+  var p={action:'angka',asOf:v.asOf,chatNew:v.chatNew,chatEx:v.chatEx,offTraffic:v.offTraffic,online:v.online,total:v.total,iklan:v.iklan,konten:same?same.konten:0,rujukan:v.rujukan,lainnya:same?same.lainnya:0};
   $('a_save').disabled=true;
   saveAndReload(p,'Angka tersimpan').then(function(ok){if(!ok){var e=$('a_save');if(e)e.disabled=false;}});
 }
 function saveCfg(){
   var cur=cfg(),vals={},bad=null;
   CFG_FIELDS.forEach(function(f){var s=$('cf_'+f[0]).value.trim(),n=s===''?null:Number(s);
-    if(s!==''&&(isNaN(n)||n<0))bad=f[1];
+    if(s!==''&&(isNaN(n)||n<0||(f[0]==='conv_target'&&n>100)))bad=f[1];
     var old=cur[f[0]];if((n==null?'':n)!==(old==null?'':old))vals[f[0]]=s;});
   if(bad){toast('Nilai tidak valid: '+bad,true);return;}
   if(!Object.keys(vals).length){toast('Tidak ada perubahan');return;}
