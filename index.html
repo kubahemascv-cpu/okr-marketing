@@ -104,6 +104,7 @@ tr:last-child td{border-bottom:none}
 .grp:first-of-type{margin-top:14px}
 .grp .tag{margin-right:6px}
 .inp.ro{background:var(--bg2);color:var(--mut);cursor:not-allowed}
+.inp.auto{background:var(--bg2);color:var(--txt);border-style:dashed;cursor:default}
 
 .nav button .nl{display:block}
 
@@ -162,11 +163,15 @@ details.card summary{font-size:13px;font-weight:800;cursor:pointer}
 // ═════════════ KONFIGURASI ═════════════
 var APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbzMAsn2ClE8-Roz1UY5lkM7hHqw5T5ulNGOL0v0ybLIZhWHelUeoiFGjmYEHAILi52b/exec';
 var PIN='1601';
-var APP_VER='v22';
+var APP_VER='v23';
 var NEED_SCRIPT=7;   // versi Apps Script yang dibutuhkan app ini
 // App Brand Creator: sumber angka Dicky (dibaca langsung, tidak diketik ulang di sini)
 var BC_URL='https://script.google.com/macros/s/AKfycbx7fvep5uCT_s_RUYbbcv4liCG0jRq5z53kzmz9BaL3QDTw2dI2PfZGo00UHhHnIPu0/exec';
 var BC_KATS=['Awareness Online','Awareness Offline','Iklan Penjualan'],BC_DIV='Kubah Emas',BC_WK='__winner__';   // OKR ini khusus Toko Kubah Emas: Kumasindo tidak dihitung
+// App Performance Toko (dashboard CS Toko): sumber Total Traffic, Leads Luar Area, Leads Luar Produk.
+// Dibaca langsung dari Sheet CS Toko yang sama dengan dashboard (harus "Anyone with the link"), tidak diketik ulang.
+var CS_SHEET_ID='1Z3kXM4e4Ic6YUhhYzB3mrlSwXAbrYqJedgNDsbNtmuk',CS_TAB='Ringkasan Harian';
+var AUTO_KEYS=['chatNew','chatEx','offTraffic','luarArea','luarProduk'];   // Spam tetap diisi manual
 var PERIOD={start:'2026-11-01',end:'2027-01-31',months:['2026-11','2026-12','2027-01']};
 var OBJ_TEXT='Lebih banyak calon pembeli yang masuk ke Kubah Emas akhirnya membeli.';
 var MONTH_ID=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
@@ -225,6 +230,75 @@ function bcLoad(){
     S.bcErr='';return j;
   }).catch(function(e){S.bcErr=String(e.message||e);return null;});
 }
+// ═════════════ PERFORMANCE TOKO (Sheet CS Toko) ═════════════
+function csDate(s){s=String(s||'').trim();var m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return m[1]+'-'+p2(m[2])+'-'+p2(m[3]);
+  m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return m[3]+'-'+p2(m[2])+'-'+p2(m[1]);
+  m=s.match(/Date\((\d+),(\d+),(\d+)\)/);if(m)return m[1]+'-'+p2(+m[2]+1)+'-'+p2(m[3]);return null;}
+function csNum(x){if(x===undefined||x===null)return null;var s=String(x).trim();if(s===''||s==='-')return null;var n=parseFloat(s.replace(/[^\d.-]/g,''));return isNaN(n)?null:n;}
+// Kolom Diluar Area / Diluar Produk berisi "Nama=Jumlah, Nama2=Jumlah2". Yang diambil hanya ANGKA setelah "=".
+// Nama boleh mengandung koma ("RELING, TENGKI=2" = satu entri, jumlah 2), jadi pemisahnya pola "teks=angka", bukan koma.
+function csEntries(x){var s=String(x==null?'':x).trim();if(!s||s==='-')return {sum:0,bad:false};var sum=0;
+  var rest=s.replace(/([^=]+?)=\s*(\d+)\s*(?:,|$)/g,function(m,n,c){sum+=parseInt(c,10);return ' ';}).replace(/[\s,]+/g,' ').trim();
+  return {sum:sum,bad:!!rest};}
+function csParse(t){
+  var heads=(t.cols||[]).map(function(c){return String(c.label||c.id||'').toLowerCase().trim();});
+  function ix(kw,fb){for(var i=0;i<heads.length;i++)if(heads[i].indexOf(kw)>=0)return i;return fb;}
+  var iD=ix('tanggal',1),iV=ix('chat new leads',21),iY=ix('chat existing leads',24),iA=ix('leads offline',29),iT=ix('diluar area',19),iU=ix('diluar produk',20);
+  function cell(r,i){var c=(r.c||[])[i];if(!c)return '';if(c.f!==undefined&&c.f!==null)return String(c.f);if(c.v!==undefined&&c.v!==null)return String(c.v);return '';}
+  var rows=[];
+  (t.rows||[]).forEach(function(r){var d=csDate(cell(r,iD));if(!d)return;
+    var v=csNum(cell(r,iV)),y=csNum(cell(r,iY)),a=csNum(cell(r,iA)),eT=csEntries(cell(r,iT)),eU=csEntries(cell(r,iU));
+    rows.push({d:d,v:v,y:y,ad:a,la:eT.sum,lp:eU.sum,bad:(eT.bad?1:0)+(eU.bad?1:0),hasT:(v!==null||y!==null||a!==null)});});
+  rows.sort(function(a,b){return a.d<b.d?-1:a.d>b.d?1:0;});
+  var f=rows.filter(function(r){return r.hasT;})[0];
+  return {ok:true,rows:rows,firstT:f?f.d:null,at:Date.now()};
+}
+function csLoad(){
+  // kegagalan Performance Toko tidak boleh menjatuhkan app: 5 kolom otomatis kembali jadi isian manual
+  S.csBusy=true;
+  return new Promise(function(resolve){
+    var cb='csCb_'+Math.random().toString(36).slice(2),done=false,sc=document.createElement('script'),tm;
+    function fin(r){if(done)return;done=true;clearTimeout(tm);try{delete window[cb];}catch(e){window[cb]=undefined;}if(sc.parentNode)sc.parentNode.removeChild(sc);S.csBusy=false;S.cs=r;resolve(r);}
+    tm=setTimeout(function(){fin({ok:false,err:'timeout lebih dari 12 detik'});},12000);
+    window[cb]=function(resp){try{
+      if(!resp||resp.status==='error')throw new Error((resp&&resp.errors&&resp.errors[0]&&resp.errors[0].detailed_message)||'sheet atau tab tidak ditemukan');
+      fin(csParse(resp.table));}catch(e){fin({ok:false,err:String(e.message||e)});}};
+    sc.src='https://docs.google.com/spreadsheets/d/'+CS_SHEET_ID+'/gviz/tq?tqx=out:json;responseHandler:'+cb+'&sheet='+encodeURIComponent(CS_TAB);
+    sc.onerror=function(){fin({ok:false,err:'sheet tidak bisa dimuat (cek sharing "Anyone with the link")'});};
+    document.head.appendChild(sc);
+  });
+}
+// Angka kumulatif sejak tanggal 1 sampai asOf, dari baris rekap harian di bulan yang sama.
+function autoVals(asOf){
+  if(!asOf||!S.cs||!S.cs.ok)return null;
+  var ym=asOf.slice(0,7),rows=S.cs.rows.filter(function(r){return r.d.slice(0,7)===ym&&r.d<=asOf;});
+  var o={chatNew:0,chatEx:0,offTraffic:0,luarArea:0,luarProduk:0,n:rows.length,tDays:0,noOff:0,bad:0,first:null,lastD:rows.length?rows[rows.length-1].d:null};
+  rows.forEach(function(r){o.chatNew+=r.v||0;o.chatEx+=r.y||0;o.offTraffic+=r.ad||0;o.luarArea+=r.la;o.luarProduk+=r.lp;o.bad+=r.bad;
+    if(r.hasT){o.tDays++;if(!o.first)o.first=r.d;if(r.ad===null)o.noOff++;}});
+  return o;
+}
+function autoMsgs(asOf){
+  var o={errs:[],warns:[]};if(!asOf||!S.cs||!S.cs.ok)return o;
+  var a=autoVals(asOf),bln=MONTH_ID[+asOf.slice(5,7)-1]+' '+asOf.slice(0,4);
+  if(a.tDays===0){o.errs.push('Sheet CS Toko belum punya data Traffic (kolom V, Y, AD) untuk '+bln+' sampai tanggal ini'+(S.cs.firstT?'. Data traffic di sheet baru ada sejak '+dLabel(S.cs.firstT):'')+'. Angka tidak bisa disimpan.');return o;}
+  if(a.tDays<a.n)o.warns.push('Data Traffic di sheet baru terisi sejak '+dLabel(a.first)+': '+a.tDays+' dari '+a.n+' hari rekap '+bln+'. Total Traffic kurang, sedangkan Jumlah Nota diisi sebulan penuh, jadi KR 1 (nota ÷ traffic) bulan ini kelihatan terlalu tinggi dan tidak valid.');
+  if(a.noOff>0)o.warns.push('Customer Datang Offline (kolom AD) kosong di '+a.noOff+' dari '+a.tDays+' hari yang punya traffic, jadi angkanya kurang.');
+  if(a.bad>0)o.warns.push(a.bad+' isian Diluar Area/Produk di sheet tidak berformat "Nama=Jumlah", tidak ikut dihitung.');
+  return o;
+}
+function fillAuto(){
+  var src=$('a_src');if(!src||!$('a_asOf'))return;
+  var asOf=$('a_asOf').value,a=autoVals(asOf),ok=!!a;
+  AUTO_KEYS.forEach(function(k){var i=$('a_'+k);if(!i)return;
+    if(ok){i.value=a[k];i.readOnly=true;i.classList.add('auto');}else{i.readOnly=false;i.classList.remove('auto');}});
+  var btn=function(t){return ' <button class="btn ghost" style="width:auto;padding:0 14px;height:34px;font-size:12.5px;margin-top:6px" onclick="csReload()">'+t+'</button>';};
+  if(S.csBusy&&!S.cs)src.innerHTML='<span class="mut">Memuat angka dari Performance Toko…</span>';
+  else if(!S.cs||!S.cs.ok)src.innerHTML='<span class="tag bad">TIDAK TERSAMBUNG</span> Performance Toko tidak bisa dibaca ('+esc(S.cs?S.cs.err:'belum dimuat')+'). Lima kolom otomatis diisi manual dulu.'+btn('Coba lagi');
+  else src.innerHTML='<span class="tag ok">TERSAMBUNG</span> Performance Toko: <b>5 kolom otomatis</b> (garis putus-putus), kumulatif tanggal 1 sampai '+dLabel(asOf)+', dari '+a.n+' hari rekap'+(a.lastD&&a.lastD<asOf?' (rekap terakhir '+dLabel(a.lastD)+')':'')+'. Spam isi manual.'+btn('Muat ulang');
+  angkaLive();
+}
+function onAsOf(){fillAuto();}
+function csReload(){csLoad().then(function(){if(S.tab==='setelan')fillAuto();});fillAuto();}
 function apiLoad(){
   return Promise.all([
     fetch(APPS_SCRIPT_URL+'?action=load&pin='+encodeURIComponent(PIN)+'&cb='+Date.now()).then(function(r){return r.json();}),
@@ -450,6 +524,7 @@ function start(){
   $('top').style.display='block';$('nav').style.display='block';$('whobtn').textContent=S.who+' ⇄';
   if(!apiReady()){$('view').innerHTML='<div class="card"><div class="mid" style="margin-bottom:8px">Apps Script belum dipasang</div><div class="sm mut">Isi <b>APPS_SCRIPT_URL</b> di index.html dengan URL deploy (/exec), lalu upload ulang.</div></div>';return;}
   $('view').innerHTML='<div class="spin">Memuat data…</div>';
+  if(PEOPLE[S.who].admin&&!S.csBusy)csLoad().then(function(){if(S.tab==='setelan')fillAuto();});
   apiLoad().then(function(){S.loaded=true;S.err='';render();}).catch(function(e){
     var m=String(e.message||e);
     if(/PIN salah/.test(m)){ls('okr_pin_ok',null);S.ok=false;gate();return;}
@@ -464,7 +539,7 @@ function navItems(){
 function nav(){
   $('navin').innerHTML=navItems().map(function(i){return '<button class="'+(S.tab===i[0]?'on':'')+'" onclick="go(\''+i[0]+'\')"><span class="ic">'+i[1]+'</span>'+i[2]+'</button>';}).join('');
 }
-function go(t){S.tab=t;render();window.scrollTo(0,0);}
+function go(t){S.tab=t;render();window.scrollTo(0,0);if(t==='setelan'&&PEOPLE[S.who].admin&&!S.csBusy&&(!S.cs||Date.now()-(S.cs.at||0)>180000))csReload();}
 function render(){
   if(!S.ok||!S.who)return;
   if(!navItems().some(function(i){return i[0]===S.tab;}))S.tab='home';
@@ -474,7 +549,7 @@ function render(){
   if(S.tab==='home')h+=vHome(K);else if(S.tab==='checkin')h+=vCheckin(K);else if(S.tab==='hambatan')h+=vHambatan(K);else if(S.tab==='setelan')h+=vSetelan(K);
   $('view').innerHTML=h;
   var tas=document.querySelectorAll('#view textarea[data-max]');for(var ti=0;ti<tas.length;ti++)taFit(tas[ti]);
-  if(S.tab==='setelan')angkaLive();
+  if(S.tab==='setelan')fillAuto();
 }
 
 // ═════════════ KOMPONEN ═════════════
@@ -652,17 +727,21 @@ function setHb(id,status){
 var AF=[['chatNew','Chat New Leads'],['chatEx','Chat Existing Leads'],['offTraffic','Customer Datang Offline'],['total','Jumlah Nota'],['online','Beli lewat chat (Deal Online)'],['rujukan','Pembeli dari rujukan Kumasindo'],['luarArea','Leads Luar Area'],['luarProduk','Leads Luar Produk'],['spam','Spam']];
 function vSetelan(K){
   var rows=(D.angka||[]).slice().sort(function(a,b){return a.asOf<b.asOf?1:-1;}),last=rows[0]||{};
-  var fld=function(f){return '<div><label class="lbl">'+f[1]+'</label><input class="inp" type="number" inputmode="numeric" min="0" step="1" id="a_'+f[0]+'" value="'+(last[f[0]]!=null?last[f[0]]:'')+'" oninput="angkaLive()"></div>';};
+  var av=autoVals(today());
+  // Spam (manual): ambil dari baris tanggal yang sama atau baris terakhir di bulan yang sama; bulan baru = kosong
+  var ymT=today().slice(0,7),spamPre=(rows.filter(function(x){return x.asOf.slice(0,7)===ymT&&x.spam!=null;})[0]||{}).spam;
+  var fld=function(f){var auto=av&&AUTO_KEYS.indexOf(f[0])>=0,val=auto?av[f[0]]:(f[0]==='spam'?(spamPre!=null?spamPre:''):(last[f[0]]!=null?last[f[0]]:''));
+    return '<div><label class="lbl">'+f[1]+'</label><input class="inp'+(auto?' auto':'')+'" type="number" inputmode="numeric" min="0" step="1" id="a_'+f[0]+'" value="'+val+'"'+(auto?' readonly':'')+' oninput="angkaLive()"></div>';};
   var h='<div class="vhead"><div class="mid">Pengaturan Manager</div><div class="sm mut">Angka bulanan dan target. Tim tidak melihat halaman ini.</div></div>';
-  h+='<div class="card"><div class="h">1 · Update angka</div><div class="sm mut" style="margin-bottom:6px">Isi <b>kumulatif sejak tanggal 1</b> bulan itu, bukan angka per minggu. Satu tanggal = satu baris; tanggal yang sama akan menimpa. Kolom sudah terisi dengan angka terakhir.</div>'+
-    '<label class="lbl">Angka per tanggal</label><input class="inp" type="date" id="a_asOf" value="'+today()+'" oninput="angkaLive()">'+
-    '<div class="grp"><b>Total Traffic</b> = chat baru + chat lama + datang ke toko</div><div class="sm mut" style="margin-bottom:10px">Kalau orang yang sama awalnya chat lalu datang ke toko, hitung <b>hanya</b> di Customer Datang Offline. Jangan dihitung dua kali.</div>'+
+  h+='<div class="card"><div class="h">1 · Update angka</div><div class="sm mut" style="margin-bottom:6px">Isi <b>kumulatif sejak tanggal 1</b> bulan itu, bukan angka per minggu. Satu tanggal = satu baris; tanggal yang sama akan menimpa. <b>Chat New, Chat Existing, Customer Datang Offline, Leads Luar Area, dan Leads Luar Produk terisi otomatis dari app Performance Toko</b> (tidak bisa diketik). Kolom lain tetap diisi di sini.</div>'+
+    '<label class="lbl">Angka per tanggal</label><input class="inp" type="date" id="a_asOf" value="'+today()+'" oninput="onAsOf()"><div id="a_src" class="sm" style="margin:10px 0 2px"></div>'+
+    '<div class="grp"><b>Total Traffic</b> = chat baru + chat lama + datang ke toko <span class="tag ok">OTOMATIS</span></div><div class="sm mut" style="margin-bottom:10px">Dari Performance Toko: Chat New Leads, Chat Existing Leads, dan Leads Offline (customer datang ke toko). Kalau orang yang sama awalnya chat lalu datang ke toko, CS mencatatnya <b>hanya</b> di Leads Offline.</div>'+
     '<div class="grid2 gridB">'+AF.slice(0,3).map(fld).join('')+'</div>'+
     '<div class="grp"><b>Transaksi</b></div><div class="sm mut" style="margin-bottom:10px">Jumlah Nota = semua nota, online dan di toko. Deal Online = yang kesepakatannya terjadi lewat chat.</div>'+
     '<div class="grid2">'+AF.slice(3,5).map(fld).join('')+'</div>'+
     '<div class="grp"><b>Asal pembeli</b></div><div class="sm mut" style="margin-bottom:10px">Hanya pembeli yang sudah ditanya asalnya. Yang belum ditanya jangan dimasukkan.</div>'+
     '<div class="grid2">'+AF.slice(5,6).map(fld).join('')+'</div>'+
-    '<div class="grp"><b>Traffic baru yang tidak valid</b> <span class="mut">(untuk Advertiser)</span></div><div class="sm mut" style="margin-bottom:10px">Dari Chat New Leads di atas, berapa yang tidak layak dilayani: di luar area layanan, di luar produk yang dijual, atau spam. Valid Traffic = Chat New Leads − ketiganya.</div>'+
+    '<div class="grp"><b>Traffic baru yang tidak valid</b> <span class="mut">(untuk Advertiser)</span></div><div class="sm mut" style="margin-bottom:10px">Dari Chat New Leads di atas, berapa yang tidak layak dilayani: di luar area layanan, di luar produk yang dijual, atau spam. Valid Traffic = Chat New Leads − ketiganya. <b>Luar Area dan Luar Produk otomatis</b> dari Performance Toko (jumlah angkanya); <b>Spam diisi manual</b>.</div>'+
     '<div class="grid2 gridB">'+AF.slice(6).map(fld).join('')+'</div>'+
     '<div id="a_live" style="margin-top:16px"></div><button class="btn" id="a_save" onclick="saveAngka()">Simpan angka</button></div>';
   var c=K.c,LBL={};CFG_FIELDS.forEach(function(f){LBL[f[0]]=f[1];});
@@ -691,8 +770,10 @@ function angkaVals(){
 function angkaLive(){
   var el=$('a_live');if(!el)return;var r=angkaVals(),v=r.v,sv=$('a_save');
   var outP=(v.asOf&&(v.asOf<PERIOD.start||v.asOf>PERIOD.end))?'<div class="sm" style="color:var(--warn);font-weight:700;margin-top:6px">Tanggal ini di luar periode OKR ('+dLabel(PERIOD.start)+' – '+dLabel(PERIOD.end)+'): angka tersimpan tapi tidak dihitung.</div>':'';
-  if(r.bad.length){el.innerHTML='<div class="sm mut">Lengkapi semua kolom dengan bilangan bulat ≥ 0.</div>'+outP;sv.disabled=true;return;}
-  var errs=[],warns=[];
+  var am=autoMsgs(v.asOf);
+  var amHtml=am.errs.map(function(e){return '<div class="sm" style="color:var(--bad);font-weight:700;margin-top:6px">'+esc(e)+'</div>';}).join('')+am.warns.map(function(e){return '<div class="sm" style="color:var(--warn);font-weight:700;margin-top:6px">'+esc(e)+'</div>';}).join('');
+  if(r.bad.length){el.innerHTML='<div class="sm mut">Lengkapi semua kolom dengan bilangan bulat ≥ 0.</div>'+outP+amHtml;sv.disabled=true;return;}
+  var errs=am.errs.slice(),warns=am.warns.slice();
   if(!v.asOf)errs.push('Tanggal belum diisi.');
   var same=(D.angka||[]).filter(function(x){return x.asOf===v.asOf;})[0];
   var sum=v.rujukan+(same?same.iklan+same.konten+same.lainnya:0);
