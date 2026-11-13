@@ -1,5 +1,5 @@
 // SW OKR Kubah Emas — network-first untuk HTML, cache-first untuk aset statis.
-const CACHE = 'okr-kubah-emas-v24';
+const CACHE = 'okr-kubah-emas-v25';
 const ASSETS = ['manifest.json','icon-192.png','icon-512.png'];
 
 self.addEventListener('install', function (e) {

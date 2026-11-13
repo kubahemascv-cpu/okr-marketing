@@ -163,8 +163,8 @@ details.card summary{font-size:13px;font-weight:800;cursor:pointer}
 // ═════════════ KONFIGURASI ═════════════
 var APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbzMAsn2ClE8-Roz1UY5lkM7hHqw5T5ulNGOL0v0ybLIZhWHelUeoiFGjmYEHAILi52b/exec';
 var PIN='1601';
-var APP_VER='v24';
-var NEED_SCRIPT=7;   // versi Apps Script yang dibutuhkan app ini
+var APP_VER='v25';
+var NEED_SCRIPT=8;   // versi Apps Script yang dibutuhkan app ini
 // App Brand Creator: sumber angka Dicky (dibaca langsung, tidak diketik ulang di sini)
 var BC_URL='https://script.google.com/macros/s/AKfycbx7fvep5uCT_s_RUYbbcv4liCG0jRq5z53kzmz9BaL3QDTw2dI2PfZGo00UHhHnIPu0/exec';
 var BC_KATS=['Awareness Online','Awareness Offline','Iklan Penjualan'],BC_DIV='Kubah Emas',BC_WK='__winner__';   // OKR ini khusus Toko Kubah Emas: Kumasindo tidak dihitung
@@ -226,7 +226,7 @@ function toast(msg,bad){var t=document.createElement('div');t.className='toast'+
 // ═════════════ API ═════════════
 function apiReady(){return APPS_SCRIPT_URL&&APPS_SCRIPT_URL.indexOf('PASTE_')!==0;}
 function scriptOld(){return S.loaded&&D.v!==NEED_SCRIPT;}
-var OLD_MSG='Apps Script belum diperbarui ke versi 7. Deploy ulang dulu (Deploy > Manage deployments > pensil > Version: New).';
+var OLD_MSG='Apps Script belum diperbarui ke versi 8. Deploy ulang dulu (Deploy > Manage deployments > pensil > Version: New).';
 function bcLoad(){
   // kegagalan Brand Creator tidak boleh menjatuhkan seluruh app: hanya baris Dicky yang kosong
   return fetch(BC_URL+'?action=load&cb='+Date.now()).then(function(r){return r.json();}).then(function(j){
@@ -314,6 +314,16 @@ function rpVals(asOf){
   if(S.rp.monthB&&S.rp.monthB[+ym.slice(5,7)-1]!==undefined)o.B=S.rp.monthB[+ym.slice(5,7)-1];
   return o;
 }
+// Dasar hitung KR 1 yang adil: hanya hari yang punya data traffic, dengan nota dari tabel harian REPORT di hari yang sama.
+// Hanya bisa dihitung kalau KEDUA sumber otomatis (CS Toko + REPORT) tersambung dan menutup bulan itu. Selain itu null = KR 1 pakai Jumlah Nota penuh.
+function lflVals(asOf){
+  if(!asOf||!S.cs||!S.cs.ok||!S.rp||!S.rp.ok)return null;
+  var r=rpVals(asOf);if(!r||!r.covered)return null;
+  var ym=asOf.slice(0,7),cs=S.cs.rows.filter(function(x){return x.d.slice(0,7)===ym&&x.d<=asOf;}),tset={};
+  cs.forEach(function(x){if(x.hasT)tset[x.d]=1;});
+  var notaT=0;S.rp.rows.forEach(function(x){if(tset[x.d])notaT+=x.nota||0;});
+  return {notaT:notaT,tDays:Object.keys(tset).length,nDays:cs.length};
+}
 function autoMsgs(asOf){
   var o={errs:[],warns:[]};if(!asOf)return o;
   var bln=MONTH_ID[+asOf.slice(5,7)-1]+' '+asOf.slice(0,4);
@@ -321,7 +331,12 @@ function autoMsgs(asOf){
     var a=autoVals(asOf);
     if(a.tDays===0){o.errs.push('Sheet CS Toko belum punya data Traffic (kolom V, Y, AD) untuk '+bln+' sampai tanggal ini'+(S.cs.firstT?'. Data traffic di sheet baru ada sejak '+dLabel(S.cs.firstT):'')+'. Angka tidak bisa disimpan.');}
     else{
-      if(a.tDays<a.n)o.warns.push('Data Traffic di sheet baru terisi sejak '+dLabel(a.first)+': '+a.tDays+' dari '+a.n+' hari rekap '+bln+'. Total Traffic kurang, sedangkan Jumlah Nota diisi sebulan penuh, jadi KR 1 (nota ÷ traffic) bulan ini kelihatan terlalu tinggi dan tidak valid.');
+      if(a.tDays<a.n){
+        var lf0=lflVals(asOf);
+        o.warns.push('Data Traffic di sheet baru terisi sejak '+dLabel(a.first)+': '+a.tDays+' dari '+a.n+' hari rekap '+bln+'. '+(lf0
+          ?'KR 1 dihitung hanya dari '+lf0.tDays+' hari yang punya traffic (nota '+n0(lf0.notaT)+' dari '+n0(rpVals(asOf).total)+') dan ditandai DATA SEBAGIAN. KR 2 tetap memakai Jumlah Nota penuh.'
+          :'Jumlah Nota diisi manual/tidak otomatis, jadi KR 1 memakai nota penuh dibagi traffic yang belum lengkap dan akan kelihatan terlalu tinggi.'));
+      }
       if(a.noOff>0)o.warns.push('Customer Datang Offline (kolom AD) kosong di '+a.noOff+' dari '+a.tDays+' hari yang punya traffic, jadi angkanya kurang.');
       if(a.bad>0)o.warns.push(a.bad+' isian Diluar Area/Produk di sheet tidak berformat "Nama=Jumlah", tidak ikut dihitung.');
     }
@@ -414,7 +429,10 @@ function calc(){
       m.chatNew=r.chatNew;m.chatEx=r.chatEx;m.offTraffic=r.offTraffic;m.luarArea=r.luarArea;m.luarProduk=r.luarProduk;m.spam=r.spam;   // null = baris lama sebelum Total Traffic dipakai
       m.traffic=(r.chatNew==null||r.chatEx==null||r.offTraffic==null)?null:r.chatNew+r.chatEx+r.offTraffic;
       m.projTotal=r.total*m.k;
-      m.conv=m.traffic>0?r.total/m.traffic:null;       // KR1
+      m.notaT=r.notaT;m.tDays=r.tDays;m.nDays=r.nDays;
+      m.partial=(r.notaT!=null&&r.tDays!=null&&r.nDays!=null&&r.tDays<r.nDays);   // traffic belum tercatat di semua hari rekap bulan itu
+      m.convNota=(r.notaT!=null)?r.notaT:r.total;      // KR1 memakai nota di hari yang punya traffic; baris lama/manual: nota penuh
+      m.conv=m.traffic>0?m.convNota/m.traffic:null;    // KR1
       m.oconv=r.chat>0?r.online/r.chat:null;            // Online Chat Conversion Rate
     }
     return m;
@@ -437,8 +455,10 @@ function kr1(K){
   if(a.traffic==null){o.msg='Angka bulan ini belum memuat rincian Total Traffic. Manager mengisi ulang di Pengaturan.';return o;}
   if(!(a.traffic>0)){o.msg='Total Traffic masih 0.';return o;}
   o.now=a.conv;o.ms=a.msConv;
-  o.st=stOf(ratioTo(a.conv,K.convBase,a.msConv),a.conv>=K.convTarget);
-  o.extra='Nota '+n0(a.total)+' dari Total Traffic '+n0(a.traffic)+' (chat baru '+n0(a.chatNew)+' · chat lama '+n0(a.chatEx)+' · datang ke toko '+n0(a.offTraffic)+')';
+  // data sebagian tidak boleh dinyatakan TERCAPAI: target akhir tidak bisa dibuktikan dari sebagian hari
+  o.st=stOf(ratioTo(a.conv,K.convBase,a.msConv),a.conv>=K.convTarget&&!a.partial);
+  o.extra='Nota '+n0(a.convNota)+' dari Total Traffic '+n0(a.traffic)+' (chat baru '+n0(a.chatNew)+' · chat lama '+n0(a.chatEx)+' · datang ke toko '+n0(a.offTraffic)+')';
+  if(a.partial){o.partial=true;o.extra+='. DATA SEBAGIAN: dihitung hanya dari '+a.tDays+' dari '+a.nDays+' hari rekap yang punya data traffic. Jumlah Nota bulan ini '+n0(a.total)+' tidak dipakai di KR 1.';}
   return o;
 }
 // KR 2: Jumlah Transaksi per bulan = Jumlah Nota. Bulan berjalan memakai proyeksi akhir bulan.
@@ -618,7 +638,7 @@ function weekDone(who){var w=weekStart();return myCheckins(who).some(function(c)
 // ═════════════ BERANDA ═════════════
 function fmtKr(o,v){return v==null?'—':o.unit==='pct'?pc(v):n0(v);}
 function krCard(o){
-  var h='<div class="card kr g"><div class="row"><div class="kr-r" style="margin:0">'+o.code+'</div><span class="sp">'+tagOf(o.st)+'</span></div>'+
+  var h='<div class="card kr g"><div class="row"><div class="kr-r" style="margin:0">'+o.code+'</div><span class="sp">'+(o.partial?'<span class="tag warn" style="margin-right:6px">DATA SEBAGIAN</span>':'')+tagOf(o.st)+'</span></div>'+
     '<div class="kr-t" style="margin-top:6px">'+esc(o.title)+'</div><div class="sm mut">'+esc(o.def)+'</div>';
   if(o.now==null){
     h+='<div class="krn"><span class="now">—</span><span class="arr">→</span><span class="tg">'+(o.tgt>0?fmtKr(o,o.tgt):'?')+'</span></div>'+
@@ -838,14 +858,14 @@ function angkaLive(){
   if(sum>v.total)errs.push('Jumlah asal pembeli ('+n0(sum)+') melebihi Jumlah Nota ('+n0(v.total)+').');
   var inv=v.luarArea+v.luarProduk+v.spam;
   if(inv>v.chatNew)errs.push('Leads tidak valid ('+n0(inv)+') tidak boleh lebih besar dari Chat New Leads ('+n0(v.chatNew)+').');
-  var traffic=v.chatNew+v.chatEx+v.offTraffic;
-  if(v.total>traffic)warns.push('Jumlah Nota ('+n0(v.total)+') lebih besar dari Total Traffic ('+n0(traffic)+'). Cek: apakah semua pembeli sudah masuk hitungan traffic?');
+  var traffic=v.chatNew+v.chatEx+v.offTraffic,lf=lflVals(v.asOf),notaK=lf?lf.notaT:v.total;
+  if(notaK>traffic)warns.push('Jumlah Nota ('+n0(notaK)+') lebih besar dari Total Traffic ('+n0(traffic)+'). Cek: apakah semua pembeli sudah masuk hitungan traffic?');
   // angka kumulatif tidak boleh lebih kecil dari baris sebelumnya di bulan yang sama
   var prev=null;(D.angka||[]).forEach(function(x){if(v.asOf&&x.asOf<v.asOf&&x.asOf.slice(0,7)===v.asOf.slice(0,7)&&(!prev||x.asOf>prev.asOf))prev=x;});
   if(prev){var pf={chatNew:'Chat New Leads',chatEx:'Chat Existing Leads',offTraffic:'Customer Datang Offline',total:'Jumlah Nota',online:'Deal Online',rujukan:'Rujukan',luarArea:'Leads Luar Area',luarProduk:'Leads Luar Produk',spam:'Spam'};
     Object.keys(pf).forEach(function(k){if(prev[k]!=null&&v[k]<prev[k])warns.push(pf[k]+' lebih kecil dari angka '+dLabel(prev.asOf)+' ('+n0(prev[k])+'). Angka harus kumulatif.');});}
   var chat=v.chatNew+v.chatEx;
-  var html='<div class="sm">Total Traffic: <b>'+n0(traffic)+'</b> · Konversi (KR 1): <b>'+(traffic>0?pc(v.total/traffic):'—')+'</b> · Online Chat Conversion: <b>'+(chat>0?pc(v.online/chat):'—')+'</b> · Valid Traffic: <b>'+n0(v.chatNew-inv)+'</b> ('+(v.chatNew>0?pc((v.chatNew-inv)/v.chatNew):'—')+')</div>'+outP;
+  var html='<div class="sm">Total Traffic: <b>'+n0(traffic)+'</b> · Konversi (KR 1): <b>'+(traffic>0?pc(notaK/traffic):'—')+'</b>'+(lf&&lf.tDays<lf.nDays?' <span class="mut">(data sebagian: '+lf.tDays+' dari '+lf.nDays+' hari)</span>':'')+' · Online Chat Conversion: <b>'+(chat>0?pc(v.online/chat):'—')+'</b> · Valid Traffic: <b>'+n0(v.chatNew-inv)+'</b> ('+(v.chatNew>0?pc((v.chatNew-inv)/v.chatNew):'—')+')</div>'+outP;
   html+=errs.map(function(e){return '<div class="sm" style="color:var(--bad);font-weight:700;margin-top:6px">'+esc(e)+'</div>';}).join('')+warns.map(function(e){return '<div class="sm" style="color:var(--warn);font-weight:700;margin-top:6px">'+esc(e)+'</div>';}).join('');
   el.innerHTML=html;sv.disabled=errs.length>0;
 }
@@ -853,6 +873,7 @@ function saveAngka(){
   var r=angkaVals();if(r.bad.length)return;var v=r.v;
   var same=(D.angka||[]).filter(function(x){return x.asOf===v.asOf;})[0];   // Iklan, Konten, Lainnya tidak ditanyakan lagi; nilai lama di tanggal yang sama dipertahankan
   var p={action:'angka',asOf:v.asOf,chatNew:v.chatNew,chatEx:v.chatEx,offTraffic:v.offTraffic,luarArea:v.luarArea,luarProduk:v.luarProduk,spam:v.spam,online:v.online,total:v.total,iklan:same?same.iklan:0,konten:same?same.konten:0,rujukan:v.rujukan,lainnya:same?same.lainnya:0};
+  var lf=lflVals(v.asOf);p.notaT=lf?lf.notaT:null;p.tDays=lf?lf.tDays:null;p.nDays=lf?lf.nDays:null;   // dasar hitung KR 1 (kosong kalau sumber tidak otomatis)
   $('a_save').disabled=true;
   saveAndReload(p,'Angka tersimpan').then(function(ok){if(!ok){var e=$('a_save');if(e)e.disabled=false;}});
 }
