@@ -163,7 +163,7 @@ details.card summary{font-size:13px;font-weight:800;cursor:pointer}
 // ═════════════ KONFIGURASI ═════════════
 var APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbzMAsn2ClE8-Roz1UY5lkM7hHqw5T5ulNGOL0v0ybLIZhWHelUeoiFGjmYEHAILi52b/exec';
 var PIN='1601';
-var APP_VER='v23';
+var APP_VER='v24';
 var NEED_SCRIPT=7;   // versi Apps Script yang dibutuhkan app ini
 // App Brand Creator: sumber angka Dicky (dibaca langsung, tidak diketik ulang di sini)
 var BC_URL='https://script.google.com/macros/s/AKfycbx7fvep5uCT_s_RUYbbcv4liCG0jRq5z53kzmz9BaL3QDTw2dI2PfZGo00UHhHnIPu0/exec';
@@ -172,6 +172,10 @@ var BC_KATS=['Awareness Online','Awareness Offline','Iklan Penjualan'],BC_DIV='K
 // Dibaca langsung dari Sheet CS Toko yang sama dengan dashboard (harus "Anyone with the link"), tidak diketik ulang.
 var CS_SHEET_ID='1Z3kXM4e4Ic6YUhhYzB3mrlSwXAbrYqJedgNDsbNtmuk',CS_TAB='Ringkasan Harian';
 var AUTO_KEYS=['chatNew','chatEx','offTraffic','luarArea','luarProduk'];   // Spam tetap diisi manual
+// Sheet penjualan (REPORT): sumber Jumlah Nota dan Beli lewat chat (Deal Online). Sama dengan sumber Jumlah Pembelian di app Performance Toko.
+var RP_ID='1n9Mp66i3JwJE6hdV3jevhOw8EOa1b7Lo8FvBegtsTo4',RP_TAB='REPORT',RP_DAILY='A127:J156',RP_MONTH='A62:B73';
+var RP_COL_NOTA=8,RP_COL_ONLINE=9;   // kolom I (JUMLAH nota) dan J (NOTA ONLINE) di tabel harian; kolom A = tanggal
+var RP_KEYS=['total','online'];
 var PERIOD={start:'2026-11-01',end:'2027-01-31',months:['2026-11','2026-12','2027-01']};
 var OBJ_TEXT='Lebih banyak calon pembeli yang masuk ke Kubah Emas akhirnya membeli.';
 var MONTH_ID=['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
@@ -230,7 +234,7 @@ function bcLoad(){
     S.bcErr='';return j;
   }).catch(function(e){S.bcErr=String(e.message||e);return null;});
 }
-// ═════════════ PERFORMANCE TOKO (Sheet CS Toko) ═════════════
+// ═════════════ PERFORMANCE TOKO (Sheet CS Toko + Sheet Penjualan/REPORT) ═════════════
 function csDate(s){s=String(s||'').trim();var m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return m[1]+'-'+p2(m[2])+'-'+p2(m[3]);
   m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return m[3]+'-'+p2(m[2])+'-'+p2(m[1]);
   m=s.match(/Date\((\d+),(\d+),(\d+)\)/);if(m)return m[1]+'-'+p2(+m[2]+1)+'-'+p2(m[3]);return null;}
@@ -240,34 +244,55 @@ function csNum(x){if(x===undefined||x===null)return null;var s=String(x).trim();
 function csEntries(x){var s=String(x==null?'':x).trim();if(!s||s==='-')return {sum:0,bad:false};var sum=0;
   var rest=s.replace(/([^=]+?)=\s*(\d+)\s*(?:,|$)/g,function(m,n,c){sum+=parseInt(c,10);return ' ';}).replace(/[\s,]+/g,' ').trim();
   return {sum:sum,bad:!!rest};}
+function gvCell(r,i){var c=(r.c||[])[i];if(!c)return '';if(c.f!==undefined&&c.f!==null)return String(c.f);if(c.v!==undefined&&c.v!==null)return String(c.v);return '';}
+// Baca satu tab Google Sheet (JSONP; sheet harus "Anyone with the link"). range opsional: A1 notation tanpa header.
+function gvizFetch(id,tab,range){
+  return new Promise(function(resolve,reject){
+    var cb='gvCb_'+Math.random().toString(36).slice(2),done=false,sc=document.createElement('script'),tm;
+    function fin(err,t){if(done)return;done=true;clearTimeout(tm);try{delete window[cb];}catch(e){window[cb]=undefined;}if(sc.parentNode)sc.parentNode.removeChild(sc);err?reject(err):resolve(t);}
+    tm=setTimeout(function(){fin(new Error('timeout lebih dari 12 detik'));},12000);
+    window[cb]=function(resp){if(!resp||resp.status==='error')return fin(new Error((resp&&resp.errors&&resp.errors[0]&&resp.errors[0].detailed_message)||'sheet atau tab tidak ditemukan'));fin(null,resp.table);};
+    sc.src='https://docs.google.com/spreadsheets/d/'+id+'/gviz/tq?tqx=out:json;responseHandler:'+cb+'&sheet='+encodeURIComponent(tab)+(range?'&range='+encodeURIComponent(range)+'&headers=0':'');
+    sc.onerror=function(){fin(new Error('sheet tidak bisa dimuat (cek sharing "Anyone with the link")'));};
+    document.head.appendChild(sc);
+  });
+}
 function csParse(t){
   var heads=(t.cols||[]).map(function(c){return String(c.label||c.id||'').toLowerCase().trim();});
   function ix(kw,fb){for(var i=0;i<heads.length;i++)if(heads[i].indexOf(kw)>=0)return i;return fb;}
   var iD=ix('tanggal',1),iV=ix('chat new leads',21),iY=ix('chat existing leads',24),iA=ix('leads offline',29),iT=ix('diluar area',19),iU=ix('diluar produk',20);
-  function cell(r,i){var c=(r.c||[])[i];if(!c)return '';if(c.f!==undefined&&c.f!==null)return String(c.f);if(c.v!==undefined&&c.v!==null)return String(c.v);return '';}
   var rows=[];
-  (t.rows||[]).forEach(function(r){var d=csDate(cell(r,iD));if(!d)return;
-    var v=csNum(cell(r,iV)),y=csNum(cell(r,iY)),a=csNum(cell(r,iA)),eT=csEntries(cell(r,iT)),eU=csEntries(cell(r,iU));
+  (t.rows||[]).forEach(function(r){var d=csDate(gvCell(r,iD));if(!d)return;
+    var v=csNum(gvCell(r,iV)),y=csNum(gvCell(r,iY)),a=csNum(gvCell(r,iA)),eT=csEntries(gvCell(r,iT)),eU=csEntries(gvCell(r,iU));
     rows.push({d:d,v:v,y:y,ad:a,la:eT.sum,lp:eU.sum,bad:(eT.bad?1:0)+(eU.bad?1:0),hasT:(v!==null||y!==null||a!==null)});});
   rows.sort(function(a,b){return a.d<b.d?-1:a.d>b.d?1:0;});
   var f=rows.filter(function(r){return r.hasT;})[0];
   return {ok:true,rows:rows,firstT:f?f.d:null,at:Date.now()};
 }
 function csLoad(){
-  // kegagalan Performance Toko tidak boleh menjatuhkan app: 5 kolom otomatis kembali jadi isian manual
+  // kegagalan Performance Toko tidak boleh menjatuhkan app: kolom otomatis kembali jadi isian manual
   S.csBusy=true;
-  return new Promise(function(resolve){
-    var cb='csCb_'+Math.random().toString(36).slice(2),done=false,sc=document.createElement('script'),tm;
-    function fin(r){if(done)return;done=true;clearTimeout(tm);try{delete window[cb];}catch(e){window[cb]=undefined;}if(sc.parentNode)sc.parentNode.removeChild(sc);S.csBusy=false;S.cs=r;resolve(r);}
-    tm=setTimeout(function(){fin({ok:false,err:'timeout lebih dari 12 detik'});},12000);
-    window[cb]=function(resp){try{
-      if(!resp||resp.status==='error')throw new Error((resp&&resp.errors&&resp.errors[0]&&resp.errors[0].detailed_message)||'sheet atau tab tidak ditemukan');
-      fin(csParse(resp.table));}catch(e){fin({ok:false,err:String(e.message||e)});}};
-    sc.src='https://docs.google.com/spreadsheets/d/'+CS_SHEET_ID+'/gviz/tq?tqx=out:json;responseHandler:'+cb+'&sheet='+encodeURIComponent(CS_TAB);
-    sc.onerror=function(){fin({ok:false,err:'sheet tidak bisa dimuat (cek sharing "Anyone with the link")'});};
-    document.head.appendChild(sc);
-  });
+  return gvizFetch(CS_SHEET_ID,CS_TAB).then(csParse).catch(function(e){return {ok:false,err:String(e.message||e)};}).then(function(r){S.csBusy=false;S.cs=r;return r;});
 }
+// REPORT (spreadsheet penjualan): tabel harian A127:J156 (A=tanggal, I=Jumlah nota, J=Nota ONLINE) dan nota per bulan A62:B73 (pembanding).
+function rpParse(daily,month){
+  var rows=[];
+  (daily.rows||[]).forEach(function(r){var d=csDate(gvCell(r,0));if(!d)return;
+    rows.push({d:d,nota:csNum(gvCell(r,RP_COL_NOTA)),online:csNum(gvCell(r,RP_COL_ONLINE))});});
+  rows.sort(function(a,b){return a.d<b.d?-1:a.d>b.d?1:0;});
+  var mb=null;
+  if(month){mb={};(month.rows||[]).forEach(function(r,i){var nm=String(gvCell(r,0)).trim().toLowerCase(),m=-1;
+    for(var k=0;k<12;k++)if(MONTH_ID[k].toLowerCase()===nm)m=k;
+    if(m<0)m=i;if(m<0||m>11)return;var v=csNum(gvCell(r,1));if(v!==null)mb[m]=v;});}
+  return {ok:true,rows:rows,monthB:mb,at:Date.now()};
+}
+function rpLoad(){
+  S.rpBusy=true;
+  var mon=gvizFetch(RP_ID,RP_TAB,RP_MONTH).catch(function(){return null;});   // hanya pembanding: gagal tidak apa-apa
+  return Promise.all([gvizFetch(RP_ID,RP_TAB,RP_DAILY),mon]).then(function(x){return rpParse(x[0],x[1]);})
+    .catch(function(e){return {ok:false,err:String(e.message||e)};}).then(function(r){S.rpBusy=false;S.rp=r;return r;});
+}
+function loadPT(){return Promise.all([csLoad(),rpLoad()]);}
 // Angka kumulatif sejak tanggal 1 sampai asOf, dari baris rekap harian di bulan yang sama.
 function autoVals(asOf){
   if(!asOf||!S.cs||!S.cs.ok)return null;
@@ -277,28 +302,59 @@ function autoVals(asOf){
     if(r.hasT){o.tDays++;if(!o.first)o.first=r.d;if(r.ad===null)o.noOff++;}});
   return o;
 }
-function autoMsgs(asOf){
-  var o={errs:[],warns:[]};if(!asOf||!S.cs||!S.cs.ok)return o;
-  var a=autoVals(asOf),bln=MONTH_ID[+asOf.slice(5,7)-1]+' '+asOf.slice(0,4);
-  if(a.tDays===0){o.errs.push('Sheet CS Toko belum punya data Traffic (kolom V, Y, AD) untuk '+bln+' sampai tanggal ini'+(S.cs.firstT?'. Data traffic di sheet baru ada sejak '+dLabel(S.cs.firstT):'')+'. Angka tidak bisa disimpan.');return o;}
-  if(a.tDays<a.n)o.warns.push('Data Traffic di sheet baru terisi sejak '+dLabel(a.first)+': '+a.tDays+' dari '+a.n+' hari rekap '+bln+'. Total Traffic kurang, sedangkan Jumlah Nota diisi sebulan penuh, jadi KR 1 (nota ÷ traffic) bulan ini kelihatan terlalu tinggi dan tidak valid.');
-  if(a.noOff>0)o.warns.push('Customer Datang Offline (kolom AD) kosong di '+a.noOff+' dari '+a.tDays+' hari yang punya traffic, jadi angkanya kurang.');
-  if(a.bad>0)o.warns.push(a.bad+' isian Diluar Area/Produk di sheet tidak berformat "Nama=Jumlah", tidak ikut dihitung.');
+// Jumlah Nota & Beli lewat chat (Deal Online) kumulatif sejak tanggal 1 sampai asOf, dari tabel harian REPORT.
+// Tabel harian itu hanya memuat SATU bulan (sesuai filter bulan di sheet), jadi covered=false kalau bulan asOf tidak ada di sana.
+function rpVals(asOf){
+  if(!asOf||!S.rp||!S.rp.ok)return null;
+  var ym=asOf.slice(0,7),inM=S.rp.rows.filter(function(r){return r.d.slice(0,7)===ym;});
+  var shown=S.rp.rows.length?S.rp.rows[0].d.slice(0,7):null;
+  if(!inM.length)return {covered:false,shown:shown};
+  var up=inM.filter(function(r){return r.d<=asOf;}),o={covered:true,total:0,online:0,n:up.length,lastD:up.length?up[up.length-1].d:null,lastAll:inM[inM.length-1].d,B:null};
+  up.forEach(function(r){o.total+=r.nota||0;o.online+=r.online||0;});
+  if(S.rp.monthB&&S.rp.monthB[+ym.slice(5,7)-1]!==undefined)o.B=S.rp.monthB[+ym.slice(5,7)-1];
   return o;
+}
+function autoMsgs(asOf){
+  var o={errs:[],warns:[]};if(!asOf)return o;
+  var bln=MONTH_ID[+asOf.slice(5,7)-1]+' '+asOf.slice(0,4);
+  if(S.cs&&S.cs.ok){
+    var a=autoVals(asOf);
+    if(a.tDays===0){o.errs.push('Sheet CS Toko belum punya data Traffic (kolom V, Y, AD) untuk '+bln+' sampai tanggal ini'+(S.cs.firstT?'. Data traffic di sheet baru ada sejak '+dLabel(S.cs.firstT):'')+'. Angka tidak bisa disimpan.');}
+    else{
+      if(a.tDays<a.n)o.warns.push('Data Traffic di sheet baru terisi sejak '+dLabel(a.first)+': '+a.tDays+' dari '+a.n+' hari rekap '+bln+'. Total Traffic kurang, sedangkan Jumlah Nota diisi sebulan penuh, jadi KR 1 (nota ÷ traffic) bulan ini kelihatan terlalu tinggi dan tidak valid.');
+      if(a.noOff>0)o.warns.push('Customer Datang Offline (kolom AD) kosong di '+a.noOff+' dari '+a.tDays+' hari yang punya traffic, jadi angkanya kurang.');
+      if(a.bad>0)o.warns.push(a.bad+' isian Diluar Area/Produk di sheet tidak berformat "Nama=Jumlah", tidak ikut dihitung.');
+    }
+  }
+  var r=rpVals(asOf);
+  if(r&&r.covered){
+    if(asOf>=r.lastAll&&r.B!==null&&r.B!==r.total)o.warns.push('Jumlah Nota dari tabel harian REPORT ('+n0(r.total)+') beda dengan nota bulanan REPORT ('+n0(r.B)+'). Cek sheet REPORT sebelum menyimpan.');
+    if(asOf===today())o.warns.push('Angka penjualan hari ini belum final.');
+  }
+  return o;
+}
+function setAuto(keys,on,obj,map){
+  keys.forEach(function(k){var i=$('a_'+k);if(!i)return;
+    if(on){i.value=obj[map?map[k]:k];i.readOnly=true;i.classList.add('auto');}else{i.readOnly=false;i.classList.remove('auto');}});
 }
 function fillAuto(){
   var src=$('a_src');if(!src||!$('a_asOf'))return;
-  var asOf=$('a_asOf').value,a=autoVals(asOf),ok=!!a;
-  AUTO_KEYS.forEach(function(k){var i=$('a_'+k);if(!i)return;
-    if(ok){i.value=a[k];i.readOnly=true;i.classList.add('auto');}else{i.readOnly=false;i.classList.remove('auto');}});
+  var asOf=$('a_asOf').value,a=autoVals(asOf),r=rpVals(asOf);
+  setAuto(AUTO_KEYS,!!a,a);
+  setAuto(RP_KEYS,!!(r&&r.covered),r);
   var btn=function(t){return ' <button class="btn ghost" style="width:auto;padding:0 14px;height:34px;font-size:12.5px;margin-top:6px" onclick="csReload()">'+t+'</button>';};
-  if(S.csBusy&&!S.cs)src.innerHTML='<span class="mut">Memuat angka dari Performance Toko…</span>';
-  else if(!S.cs||!S.cs.ok)src.innerHTML='<span class="tag bad">TIDAK TERSAMBUNG</span> Performance Toko tidak bisa dibaca ('+esc(S.cs?S.cs.err:'belum dimuat')+'). Lima kolom otomatis diisi manual dulu.'+btn('Coba lagi');
-  else src.innerHTML='<span class="tag ok">TERSAMBUNG</span> Performance Toko: <b>5 kolom otomatis</b> (garis putus-putus), kumulatif tanggal 1 sampai '+dLabel(asOf)+', dari '+a.n+' hari rekap'+(a.lastD&&a.lastD<asOf?' (rekap terakhir '+dLabel(a.lastD)+')':'')+'. Spam isi manual.'+btn('Muat ulang');
+  if(S.csBusy&&!S.cs)src.innerHTML='<span class="mut">Memuat angka traffic dari Performance Toko…</span>';
+  else if(!S.cs||!S.cs.ok)src.innerHTML='<span class="tag bad">TRAFFIC TIDAK TERSAMBUNG</span> Sheet CS Toko tidak bisa dibaca ('+esc(S.cs?S.cs.err:'belum dimuat')+'). Lima kolom traffic diisi manual dulu.'+btn('Coba lagi');
+  else src.innerHTML='<span class="tag ok">TRAFFIC TERSAMBUNG</span> Performance Toko: <b>5 kolom traffic otomatis</b> (garis putus-putus), kumulatif tanggal 1 sampai '+dLabel(asOf)+', dari '+a.n+' hari rekap'+(a.lastD&&a.lastD<asOf?' (rekap terakhir '+dLabel(a.lastD)+')':'')+'. Spam isi manual.'+btn('Muat ulang');
+  var rp=$('a_rp');if(!rp)return;
+  if(S.rpBusy&&!S.rp)rp.innerHTML='<span class="mut">Memuat angka penjualan dari REPORT…</span>';
+  else if(!S.rp||!S.rp.ok)rp.innerHTML='<span class="tag bad">PENJUALAN TIDAK TERSAMBUNG</span> Sheet REPORT tidak bisa dibaca ('+esc(S.rp?S.rp.err:'belum dimuat')+'). Jumlah Nota dan Beli lewat chat diisi manual dulu.'+btn('Coba lagi');
+  else if(!r.covered)rp.innerHTML='<span class="tag warn">PENJUALAN MANUAL</span> Tabel harian REPORT sedang menampilkan '+(r.shown?MONTH_ID[+r.shown.slice(5,7)-1]+' '+r.shown.slice(0,4):'bulan lain')+', bukan bulan ini. Jumlah Nota dan Beli lewat chat diisi manual, atau ganti filter bulan di sheet REPORT.';
+  else rp.innerHTML='<span class="tag ok">PENJUALAN TERSAMBUNG</span> REPORT: <b>Jumlah Nota</b> dan <b>Beli lewat chat</b> otomatis, kumulatif tanggal 1 sampai '+dLabel(asOf)+(r.lastD&&r.lastD<asOf?' (data penjualan terakhir '+dLabel(r.lastD)+')':'')+'.';
   angkaLive();
 }
 function onAsOf(){fillAuto();}
-function csReload(){csLoad().then(function(){if(S.tab==='setelan')fillAuto();});fillAuto();}
+function csReload(){loadPT().then(function(){if(S.tab==='setelan')fillAuto();});fillAuto();}
 function apiLoad(){
   return Promise.all([
     fetch(APPS_SCRIPT_URL+'?action=load&pin='+encodeURIComponent(PIN)+'&cb='+Date.now()).then(function(r){return r.json();}),
@@ -524,7 +580,7 @@ function start(){
   $('top').style.display='block';$('nav').style.display='block';$('whobtn').textContent=S.who+' ⇄';
   if(!apiReady()){$('view').innerHTML='<div class="card"><div class="mid" style="margin-bottom:8px">Apps Script belum dipasang</div><div class="sm mut">Isi <b>APPS_SCRIPT_URL</b> di index.html dengan URL deploy (/exec), lalu upload ulang.</div></div>';return;}
   $('view').innerHTML='<div class="spin">Memuat data…</div>';
-  if(PEOPLE[S.who].admin&&!S.csBusy)csLoad().then(function(){if(S.tab==='setelan')fillAuto();});
+  if(PEOPLE[S.who].admin&&!S.csBusy&&!S.rpBusy)loadPT().then(function(){if(S.tab==='setelan')fillAuto();});
   apiLoad().then(function(){S.loaded=true;S.err='';render();}).catch(function(e){
     var m=String(e.message||e);
     if(/PIN salah/.test(m)){ls('okr_pin_ok',null);S.ok=false;gate();return;}
@@ -539,7 +595,7 @@ function navItems(){
 function nav(){
   $('navin').innerHTML=navItems().map(function(i){return '<button class="'+(S.tab===i[0]?'on':'')+'" onclick="go(\''+i[0]+'\')"><span class="ic">'+i[1]+'</span>'+i[2]+'</button>';}).join('');
 }
-function go(t){S.tab=t;render();window.scrollTo(0,0);if(t==='setelan'&&PEOPLE[S.who].admin&&!S.csBusy&&(!S.cs||Date.now()-(S.cs.at||0)>180000))csReload();}
+function go(t){S.tab=t;render();window.scrollTo(0,0);if(t==='setelan'&&PEOPLE[S.who].admin&&!S.csBusy&&!S.rpBusy&&(!S.cs||!S.rp||Date.now()-(S.cs.at||0)>180000))csReload();}
 function render(){
   if(!S.ok||!S.who)return;
   if(!navItems().some(function(i){return i[0]===S.tab;}))S.tab='home';
@@ -730,14 +786,15 @@ function vSetelan(K){
   var av=autoVals(today());
   // Spam (manual): ambil dari baris tanggal yang sama atau baris terakhir di bulan yang sama; bulan baru = kosong
   var ymT=today().slice(0,7),spamPre=(rows.filter(function(x){return x.asOf.slice(0,7)===ymT&&x.spam!=null;})[0]||{}).spam;
-  var fld=function(f){var auto=av&&AUTO_KEYS.indexOf(f[0])>=0,val=auto?av[f[0]]:(f[0]==='spam'?(spamPre!=null?spamPre:''):(last[f[0]]!=null?last[f[0]]:''));
+  var rv=rpVals(today());
+  var fld=function(f){var isRp=RP_KEYS.indexOf(f[0])>=0,auto=isRp?!!(rv&&rv.covered):!!(av&&AUTO_KEYS.indexOf(f[0])>=0),val=auto?(isRp?rv[f[0]]:av[f[0]]):(f[0]==='spam'?(spamPre!=null?spamPre:''):(last[f[0]]!=null?last[f[0]]:''));
     return '<div><label class="lbl">'+f[1]+'</label><input class="inp'+(auto?' auto':'')+'" type="number" inputmode="numeric" min="0" step="1" id="a_'+f[0]+'" value="'+val+'"'+(auto?' readonly':'')+' oninput="angkaLive()"></div>';};
   var h='<div class="vhead"><div class="mid">Pengaturan Manager</div><div class="sm mut">Angka bulanan dan target. Tim tidak melihat halaman ini.</div></div>';
-  h+='<div class="card"><div class="h">1 · Update angka</div><div class="sm mut" style="margin-bottom:6px">Isi <b>kumulatif sejak tanggal 1</b> bulan itu, bukan angka per minggu. Satu tanggal = satu baris; tanggal yang sama akan menimpa. <b>Chat New, Chat Existing, Customer Datang Offline, Leads Luar Area, dan Leads Luar Produk terisi otomatis dari app Performance Toko</b> (tidak bisa diketik). Kolom lain tetap diisi di sini.</div>'+
-    '<label class="lbl">Angka per tanggal</label><input class="inp" type="date" id="a_asOf" value="'+today()+'" oninput="onAsOf()"><div id="a_src" class="sm" style="margin:10px 0 2px"></div>'+
+  h+='<div class="card"><div class="h">1 · Update angka</div><div class="sm mut" style="margin-bottom:6px">Isi <b>kumulatif sejak tanggal 1</b> bulan itu, bukan angka per minggu. Satu tanggal = satu baris; tanggal yang sama akan menimpa. <b>Chat New, Chat Existing, Customer Datang Offline, Leads Luar Area, Leads Luar Produk, Jumlah Nota, dan Beli lewat chat terisi otomatis dari Performance Toko</b> (tidak bisa diketik). Hanya Rujukan dan Spam yang diisi di sini.</div>'+
+    '<label class="lbl">Angka per tanggal</label><input class="inp" type="date" id="a_asOf" value="'+today()+'" oninput="onAsOf()"><div id="a_src" class="sm" style="margin:10px 0 2px"></div><div id="a_rp" class="sm" style="margin:6px 0 2px"></div>'+
     '<div class="grp"><b>Total Traffic</b> = chat baru + chat lama + datang ke toko <span class="tag ok">OTOMATIS</span></div><div class="sm mut" style="margin-bottom:10px">Dari Performance Toko: Chat New Leads, Chat Existing Leads, dan Leads Offline (customer datang ke toko). Kalau orang yang sama awalnya chat lalu datang ke toko, CS mencatatnya <b>hanya</b> di Leads Offline.</div>'+
     '<div class="grid2 gridB">'+AF.slice(0,3).map(fld).join('')+'</div>'+
-    '<div class="grp"><b>Transaksi</b></div><div class="sm mut" style="margin-bottom:10px">Jumlah Nota = semua nota, online dan di toko. Deal Online = yang kesepakatannya terjadi lewat chat.</div>'+
+    '<div class="grp"><b>Transaksi</b> <span class="tag ok">OTOMATIS</span></div><div class="sm mut" style="margin-bottom:10px">Dari tab REPORT: Jumlah Nota = semua nota, online dan di toko. Beli lewat chat = nota ONLINE (kesepakatannya terjadi lewat chat).</div>'+
     '<div class="grid2">'+AF.slice(3,5).map(fld).join('')+'</div>'+
     '<div class="grp"><b>Asal pembeli</b></div><div class="sm mut" style="margin-bottom:10px">Hanya pembeli yang sudah ditanya asalnya. Yang belum ditanya jangan dimasukkan.</div>'+
     '<div class="grid2">'+AF.slice(5,6).map(fld).join('')+'</div>'+
